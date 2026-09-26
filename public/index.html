@@ -1,0 +1,1309 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Four-Wheel Hydraulic ABS — Virtual Prototype</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<style>
+  :root{
+    --bg:#0D1015; --panel:#151A21; --panel-2:#1C232C; --line:#2A323E;
+    --text:#E8EBEF; --text-dim:#8B94A3; --text-faint:#5B6472;
+    --cyan:#3FB8C9; --green:#6FD68A; --amber:#F2A33B; --red:#E8604F; --slate:#3A4453;
+    --radius:10px;
+    font-family:'Space Grotesk', system-ui, sans-serif;
+  }
+  *{box-sizing:border-box;}
+  html,body{height:100%;}
+  body{margin:0; background:var(--bg); color:var(--text);
+    padding-top:env(safe-area-inset-top,0px); padding-bottom:env(safe-area-inset-bottom,0px);
+    -webkit-font-smoothing:antialiased;}
+  .mono{font-family:'JetBrains Mono', monospace;}
+
+  header{padding:20px 24px 16px; border-bottom:1px solid var(--line);
+    display:flex; align-items:baseline; justify-content:space-between; gap:16px; flex-wrap:wrap;}
+  header h1{margin:0; font-size:1.15rem; font-weight:600;}
+  header h1 span{color:var(--text-dim); font-weight:400;}
+  header .tag{font-family:'JetBrains Mono',monospace; font-size:0.72rem; color:var(--text-faint);}
+
+  .layout{display:grid; grid-template-columns:300px 1fr; gap:18px; padding:18px; max-width:1400px; margin:0 auto;}
+  @media (max-width:880px){.layout{grid-template-columns:1fr;}}
+
+  .panel{background:var(--panel); border:1px solid var(--line); border-radius:var(--radius); padding:16px;}
+  .panel h2{margin:0 0 12px; font-size:0.78rem; font-weight:600; color:var(--text-dim);}
+
+  .field{margin-bottom:16px;} .field:last-child{margin-bottom:0;}
+  .field label{display:flex; justify-content:space-between; align-items:baseline; font-size:0.78rem; color:var(--text-dim); margin-bottom:6px;}
+  .field label .val{font-family:'JetBrains Mono',monospace; color:var(--text); font-size:0.78rem;}
+  input[type=range]{-webkit-appearance:none; width:100%; height:4px; border-radius:2px; background:var(--line); outline:none;}
+  input[type=range]::-webkit-slider-thumb{-webkit-appearance:none; width:15px; height:15px; border-radius:50%; background:var(--cyan); cursor:pointer; border:2px solid var(--bg);}
+  input[type=range]::-moz-range-thumb{width:15px; height:15px; border-radius:50%; background:var(--cyan); border:2px solid var(--bg); cursor:pointer;}
+
+  .seg{display:flex; border:1px solid var(--line); border-radius:8px; overflow:hidden;}
+  .seg button{flex:1; background:var(--panel-2); color:var(--text-dim); border:none; padding:8px 4px; font-family:'Space Grotesk',sans-serif; font-size:0.78rem; cursor:pointer; border-right:1px solid var(--line);}
+  .seg button:last-child{border-right:none;}
+  .seg button.active{background:var(--cyan); color:#08171A; font-weight:600;}
+
+  .toggle-row{display:flex; align-items:center; justify-content:space-between;}
+  .switch{width:42px; height:24px; border-radius:12px; background:var(--slate); position:relative; cursor:pointer; border:1px solid var(--line); transition:background .15s;}
+  .switch.on{background:var(--cyan);}
+  .switch::after{content:''; position:absolute; width:18px; height:18px; border-radius:50%; background:#fff; top:2px; left:2px; transition:left .15s;}
+  .switch.on::after{left:20px;}
+
+  button.run{width:100%; padding:11px; margin-top:4px; border:none; border-radius:8px; background:var(--cyan); color:#08171A; font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:0.85rem; cursor:pointer;}
+  button.run:active{transform:translateY(1px);}
+  button.run.secondary{background:transparent; border:1px solid var(--line); color:var(--text); margin-top:8px;}
+
+  .main{display:flex; flex-direction:column; gap:18px;}
+  .row2{display:grid; grid-template-columns:1fr 1fr; gap:18px;}
+  @media (max-width:880px){.row2{grid-template-columns:1fr;}}
+
+  /* 3D viewport */
+  .viewport{position:relative; padding:0; overflow:hidden;}
+  .viewport canvas{display:block; width:100%; height:420px;}
+  @media (max-width:600px){.viewport canvas{height:300px;}}
+  .hud{position:absolute; inset:0; pointer-events:none; padding:14px;}
+  .hud-top{display:flex; justify-content:space-between; align-items:flex-start;}
+  .hud-speed{font-family:'JetBrains Mono',monospace; background:rgba(13,16,21,0.55); backdrop-filter:blur(4px); border:1px solid var(--line); border-radius:8px; padding:8px 12px;}
+  .hud-speed .n{font-size:1.6rem; font-weight:700; line-height:1;}
+  .hud-speed .u{font-size:0.65rem; color:var(--text-dim);}
+  .hud-lamp{pointer-events:auto; font-family:'JetBrains Mono',monospace; font-size:0.7rem; font-weight:700; padding:6px 10px; border-radius:6px; background:rgba(13,16,21,0.55); border:1px solid var(--line); color:var(--text-faint); letter-spacing:0.5px;}
+  .hud-lamp.active{color:#0A0F0A; background:var(--amber); border-color:var(--amber);}
+  .hud-bottom{position:absolute; right:14px; bottom:14px; display:flex; gap:8px; pointer-events:auto;}
+  .icon-btn{width:36px; height:36px; border-radius:8px; background:rgba(13,16,21,0.6); border:1px solid var(--line); color:var(--text); cursor:pointer; font-size:1rem; backdrop-filter:blur(4px);}
+  .wheel-strip{display:flex; gap:8px; margin-top:12px;}
+  .wchip{flex:1; background:var(--panel-2); border:1px solid var(--line); border-radius:8px; padding:8px 10px; text-align:center;}
+  .wchip .l{font-size:0.65rem; color:var(--text-dim);}
+  .wchip .v{font-family:'JetBrains Mono',monospace; font-weight:700; font-size:0.95rem; margin-top:2px;}
+  .wchip .dot{width:7px; height:7px; border-radius:50%; display:inline-block; margin-right:4px;}
+
+  .stat-grid{display:grid; grid-template-columns:repeat(4,1fr); gap:10px; margin-top:12px;}
+  @media (max-width:700px){.stat-grid{grid-template-columns:repeat(2,1fr);}}
+  .stat{background:var(--panel-2); border:1px solid var(--line); border-radius:8px; padding:10px 12px;}
+  .stat .k{font-size:0.65rem; color:var(--text-dim); margin-bottom:4px;}
+  .stat .v{font-family:'JetBrains Mono',monospace; font-size:0.95rem; font-weight:700;}
+  .stat .v small{font-size:0.62rem; color:var(--text-dim); font-weight:400;}
+
+  .playbar{display:flex; align-items:center; gap:10px; width:100%; margin-top:12px;}
+  .playbar button{background:var(--panel-2); border:1px solid var(--line); color:var(--text); width:34px; height:34px; border-radius:8px; cursor:pointer; font-size:0.85rem; flex-shrink:0;}
+  .playbar input[type=range]{flex:1;}
+  .playbar .t{font-family:'JetBrains Mono',monospace; font-size:0.72rem; color:var(--text-dim); width:48px; text-align:right; flex-shrink:0;}
+
+  .chart-card{padding:14px 16px;}
+  .chart-head{display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;}
+  .chart-head h3{margin:0; font-size:0.8rem; font-weight:600;}
+  .legend{display:flex; gap:12px; flex-wrap:wrap;}
+  .legend span{font-size:0.68rem; color:var(--text-dim); display:flex; align-items:center; gap:5px;}
+  .dot{width:8px; height:8px; border-radius:50%; display:inline-block;}
+  canvas.chart{width:100%; display:block;}
+
+  footer{max-width:1400px; margin:0 auto; padding:8px 24px 28px; color:var(--text-faint); font-size:0.72rem;}
+  .banner{background:var(--panel-2); border:1px solid var(--line); border-left:3px solid var(--amber); border-radius:8px; padding:10px 14px; font-size:0.78rem; color:var(--text-dim); margin-bottom:14px;}
+
+  /* brake cutaway */
+  .cut-layout{display:grid; grid-template-columns:1.4fr 1fr; gap:16px;}
+  @media (max-width:820px){.cut-layout{grid-template-columns:1fr;}}
+  .cut-viewport{position:relative; background:#0A0D12; border:1px solid var(--line); border-radius:8px; overflow:hidden;}
+  .cut-viewport canvas{display:block; width:100%; height:360px;}
+  .cut-labels{position:absolute; inset:0; pointer-events:none;}
+  .label3d{position:absolute; transform:translate(-50%,-100%); font-family:'JetBrains Mono',monospace; font-size:0.62rem; color:var(--text); background:rgba(13,16,21,0.7); border:1px solid var(--line); border-radius:5px; padding:2px 6px; white-space:nowrap;}
+  .label3d::after{content:''; position:absolute; left:50%; top:100%; width:1px; height:8px; background:var(--line);}
+  .label3d.lbl-on{border-color:var(--cyan); color:var(--cyan); font-weight:700;}
+  .label3d.lbl-off{border-color:var(--red); color:var(--red); font-weight:700;}
+  .cut-side{display:flex; flex-direction:column; gap:12px;}
+  .readout{display:flex; flex-direction:column; gap:8px;}
+  .rline{display:flex; justify-content:space-between; align-items:center; background:var(--panel-2); border:1px solid var(--line); border-radius:7px; padding:8px 10px;}
+  .rline .k{font-size:0.72rem; color:var(--text-dim);}
+  .rline .v{font-family:'JetBrains Mono',monospace; font-weight:700; font-size:0.85rem;}
+  .rline .v.state-normal{color:var(--text-dim);}
+  .rline .v.state-hold{color:var(--amber);}
+  .rline .v.state-release{color:var(--red);}
+  .rline .v.state-reapply{color:var(--cyan);}
+  .slipbar-wrap{background:var(--panel-2); border:1px solid var(--line); border-radius:7px; padding:8px 10px;}
+  .slipbar-track{position:relative; height:6px; background:var(--line); border-radius:3px; margin-top:6px; overflow:visible;}
+  .slipbar-band{position:absolute; top:0; bottom:0; background:rgba(63,184,201,0.25); border-radius:3px;}
+  .slipbar-fill{position:absolute; top:-3px; width:3px; height:12px; background:var(--text); border-radius:2px;}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Four-Wheel Hydraulic Braking System <span>+ ABS — Virtual Prototype</span></h1>
+  <div class="tag" id="clockreadout">t = 0.000 s</div>
+</header>
+
+<div class="layout">
+
+  <div class="panel">
+    <h2>DRIVER INPUT</h2>
+    <div class="field">
+      <label>Initial speed <span class="val" id="v0val">80 km/h</span></label>
+      <input type="range" id="v0" min="30" max="180" value="80" step="5">
+    </div>
+    <div class="field">
+      <label>Brake pedal <span class="val" id="pedalval">100 %</span></label>
+      <input type="range" id="pedal" min="0" max="100" value="100" step="5">
+    </div>
+    <div class="field">
+      <label>Brake applied at <span class="val" id="tbval">2.0 s</span></label>
+      <input type="range" id="tb" min="0" max="4" value="2" step="0.5">
+    </div>
+    <div class="field">
+      <label>Road surface</label>
+      <div class="seg" id="roadseg">
+        <button class="active" data-road="tarmac">Tarmac</button>
+        <button data-road="concrete">Concrete</button>
+        <button data-road="oily">Oily / low-grip</button>
+      </div>
+    </div>
+    <div class="field">
+      <label>ABS controller</label>
+      <div class="toggle-row">
+        <span class="mono" id="abslabel" style="font-size:0.82rem;">ON</span>
+        <div class="switch on" id="absswitch"></div>
+      </div>
+    </div>
+    <button class="run" id="runbtn">Run simulation</button>
+    <button class="run secondary" id="comparebtn">Compare ABS on vs. off</button>
+    <button class="run secondary" id="surfacebtn">Compare all 3 surfaces</button>
+    <div class="banner" style="margin-top:14px; margin-bottom:0;">
+      Slip target ≈ 0.17. Watch the wheels in the 3D view: a locked wheel stops spinning while the car keeps sliding — that's exactly what ABS prevents.
+    </div>
+  </div>
+
+  <div class="main">
+
+    <div class="panel viewport">
+      <canvas id="three-canvas"></canvas>
+      <div class="cut-labels" id="car-labels"></div>
+      <div class="hud">
+        <div class="hud-top">
+          <div class="hud-speed"><div class="n" id="hud-speed">0</div><div class="u">km/h</div></div>
+          <div class="hud-lamp" id="hud-lamp">ABS</div>
+        </div>
+        <div class="hud-bottom">
+          <button class="icon-btn" id="mutebtn" title="Mute / unmute">🔊</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="banner" id="compare-callout" style="display:none; font-size:0.92rem; padding:14px 16px; border-left-color:var(--cyan); color:var(--text);"></div>
+
+    <div class="panel">
+      <div class="wheel-strip">
+        <div class="wchip"><div class="l">FL slip</div><div class="v"><span class="dot" id="dot-FL" style="background:#3FB8C9"></span><span id="val-FL">0%</span></div></div>
+        <div class="wchip"><div class="l">FR slip</div><div class="v"><span class="dot" id="dot-FR" style="background:#6FD68A"></span><span id="val-FR">0%</span></div></div>
+        <div class="wchip"><div class="l">RL slip</div><div class="v"><span class="dot" id="dot-RL" style="background:#F2A33B"></span><span id="val-RL">0%</span></div></div>
+        <div class="wchip"><div class="l">RR slip</div><div class="v"><span class="dot" id="dot-RR" style="background:#E8604F"></span><span id="val-RR">0%</span></div></div>
+      </div>
+
+      <div class="stat-grid">
+        <div class="stat"><div class="k">Stopping distance</div><div class="v" id="stat-dist">–</div></div>
+        <div class="stat"><div class="k">Stopping time</div><div class="v" id="stat-time">–</div></div>
+        <div class="stat"><div class="k">Peak slip reached</div><div class="v" id="stat-slip">–</div></div>
+        <div class="stat"><div class="k">ABS status</div><div class="v" id="stat-abs">–</div></div>
+      </div>
+
+      <div class="playbar">
+        <button id="playbtn">▶</button>
+        <input type="range" id="scrub" min="0" max="1000" value="0">
+        <div class="t mono" id="scrubtime">0.00s</div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="chart-head" style="margin-bottom:10px;">
+        <h3>Brake assembly — internal view</h3>
+        <div class="seg" id="cornerseg" style="width:220px;">
+          <button class="active" data-corner="FL">FL</button>
+          <button data-corner="FR">FR</button>
+          <button data-corner="RL">RL</button>
+          <button data-corner="RR">RR</button>
+        </div>
+      </div>
+      <div class="cut-layout">
+        <div class="cut-viewport">
+          <canvas id="cut-canvas"></canvas>
+          <div class="cut-labels" id="cut-labels"></div>
+        </div>
+        <div class="cut-side">
+          <div class="readout">
+            <div class="rline"><span class="k">Wheel-cylinder pressure</span><span class="v" id="ro-pressure">0 bar</span></div>
+            <div class="rline"><span class="k">Pad clamping force</span><span class="v" id="ro-force">0 N</span></div>
+            <div class="rline"><span class="k">Brake torque</span><span class="v" id="ro-torque">0 N·m</span></div>
+            <div class="rline"><span class="k">ABS valve state</span><span class="v state-normal" id="ro-state">NORMAL</span></div>
+            <div class="rline"><span class="k">Wheel speed</span><span class="v" id="ro-wspeed">0 km/h</span></div>
+          </div>
+          <div class="slipbar-wrap">
+            <div class="k" style="font-size:0.72rem; color:var(--text-dim);">Slip ratio vs. ABS target band</div>
+            <div class="slipbar-track" id="slipbar-track">
+              <div class="slipbar-band" id="slipbar-band"></div>
+              <div class="slipbar-fill" id="slipbar-fill"></div>
+            </div>
+          </div>
+          <div class="banner" style="margin:0;">
+            Pedal press → hydraulic pressure reaches this wheel's valve → piston pushes the pad onto the spinning rotor → torque slows the wheel. If slip climbs past target, the ABS ECU commands this valve to hold or release pressure so the pad backs off before the wheel locks.
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="row2">
+      <div class="panel chart-card">
+        <div class="chart-head">
+          <h3>Vehicle &amp; wheel speed</h3>
+          <div class="legend">
+            <span><i class="dot" style="background:#E8EBEF"></i>vehicle</span>
+            <span><i class="dot" style="background:#3FB8C9"></i>FL</span>
+            <span><i class="dot" style="background:#6FD68A"></i>FR</span>
+            <span><i class="dot" style="background:#F2A33B"></i>RL</span>
+            <span><i class="dot" style="background:#E8604F"></i>RR</span>
+          </div>
+        </div>
+        <canvas class="chart" id="chart-speed" height="190"></canvas>
+      </div>
+      <div class="panel chart-card">
+        <div class="chart-head">
+          <h3>Wheel slip ratio</h3>
+          <div class="legend">
+            <span><i class="dot" style="background:#3FB8C9"></i>FL</span>
+            <span><i class="dot" style="background:#6FD68A"></i>FR</span>
+            <span><i class="dot" style="background:#F2A33B"></i>RL</span>
+            <span><i class="dot" style="background:#E8604F"></i>RR</span>
+            <span><i class="dot" style="background:#5B6472"></i>target band</span>
+          </div>
+        </div>
+        <canvas class="chart" id="chart-slip" height="190"></canvas>
+      </div>
+    </div>
+
+    <div class="row2">
+      <div class="panel chart-card">
+        <div class="chart-head">
+          <h3>Hydraulic pressure</h3>
+          <div class="legend">
+            <span><i class="dot" style="background:#E8EBEF"></i>master</span>
+            <span><i class="dot" style="background:#3FB8C9"></i>FL</span>
+            <span><i class="dot" style="background:#6FD68A"></i>FR</span>
+            <span><i class="dot" style="background:#F2A33B"></i>RL</span>
+            <span><i class="dot" style="background:#E8604F"></i>RR</span>
+          </div>
+        </div>
+        <canvas class="chart" id="chart-pressure" height="170"></canvas>
+      </div>
+      <div class="panel chart-card">
+        <div class="chart-head">
+          <h3>ABS activation timeline</h3>
+          <div class="legend">
+            <span><i class="dot" style="background:#3A4453"></i>normal</span>
+            <span><i class="dot" style="background:#F2A33B"></i>hold</span>
+            <span><i class="dot" style="background:#E8604F"></i>release</span>
+            <span><i class="dot" style="background:#3FB8C9"></i>reapply</span>
+          </div>
+        </div>
+        <canvas class="chart" id="chart-abs" height="170"></canvas>
+      </div>
+    </div>
+
+    <div class="panel chart-card" id="surface-panel" style="display:none;">
+      <div class="chart-head">
+        <h3>Stopping distance &amp; time by road surface</h3>
+        <div class="legend">
+          <span><i class="dot" style="background:#8f9198"></i>Tarmac</span>
+          <span><i class="dot" style="background:#c9c2a8"></i>Concrete</span>
+          <span><i class="dot" style="background:#3fb8c9"></i>Oily / low-grip</span>
+        </div>
+      </div>
+      <div class="row2">
+        <div>
+          <div style="font-size:0.72rem; color:var(--text-dim); margin-bottom:4px;">Stopping distance (m)</div>
+          <canvas class="chart" id="chart-surf-dist" height="180"></canvas>
+        </div>
+        <div>
+          <div style="font-size:0.72rem; color:var(--text-dim); margin-bottom:4px;">Stopping time (s)</div>
+          <canvas class="chart" id="chart-surf-time" height="180"></canvas>
+        </div>
+      </div>
+      <div class="banner" id="surface-callout" style="margin:12px 0 0;"></div>
+    </div>
+
+  </div>
+</div>
+
+<footer>
+  Client-side physics + a Three.js visualization (not connected to any live vehicle or real audio recordings — engine hum, tire screech and ABS clicks are synthesized with the Web Audio API). Tire model: μ(slip)=2·μpeak·s/(1+s²). Parameters: m=1550 kg, R=0.31 m, J=1.2 kg·m², front/rear split 55/45. Educational virtual prototype for a college mechanical-engineering project.
+</footer>
+
+<script>
+(function(){
+  "use strict";
+
+  // ================= PHYSICS =================
+  function simulate(P){
+    const dt=0.0025, Tstop=14.0, N=Math.round(Tstop/dt);
+    const R=0.31, J=1.2, M=1550, g=9.81, wf=0.55, wr=0.45;
+    const Fz=[M*g*wf/2,M*g*wf/2,M*g*wr/2,M*g*wr/2];
+    const slipPeak=0.17;
+    const muPeak = P.road==='concrete' ? 0.96 : (P.road==='oily' ? 0.22 : 0.78);
+    const maxPedalForce=500, boosterRatio=4, mcArea=2.0e-4, mcTau=0.04, mcPmax=12e6;
+    const areas=[1.5e-3,1.5e-3,1.0e-3,1.0e-3], Reffs=[0.13,0.13,0.11,0.11], Tmaxs=[1200,1200,700,700], muPad=0.40;
+    const absRate=3.0, slipTarget=0.17, slipUpper=0.22, slipLower=0.10;
+
+    let v=P.v0, omega=[P.v0/R,P.v0/R,P.v0/R,P.v0/R], m=[1,1,1,1], Pmaster=0;
+    let state=[0,0,0,0];
+    let dist=0, stopped=false, stopTime=null, stopDist=null, peakSlip=0, absEverActive=false;
+
+    const T=[],V=[],OM=[[],[],[],[]],SL=[[],[],[],[]],PW=[[],[],[],[]],PM=[],ST=[[],[],[],[]],AA=[],DIST=[],TB=[[],[],[],[]];
+
+    for(let i=0;i<=N;i++){
+      const time=i*dt;
+      let pedalFrac=0; const rampT=0.15;
+      if(time>P.brakeStart) pedalFrac = Math.min(1,(time-P.brakeStart)/rampT)*(P.pedalPct/100);
+      const force = pedalFrac*maxPedalForce*boosterRatio;
+      const pRaw = force/mcArea;
+      Pmaster += dt*(pRaw-Pmaster)/mcTau;
+      Pmaster = Math.max(0, Math.min(mcPmax, Pmaster));
+
+      const slip=[0,0,0,0], Fx=[0,0,0,0];
+      for(let k=0;k<4;k++){
+        const vWheel=omega[k]*R;
+        let s = v>0.5 ? (v-vWheel)/v : 0;
+        s = Math.max(0, Math.min(1,s));
+        slip[k]=s;
+        const sn=s/slipPeak;
+        const peakMu = 2*muPeak*sn/(1+sn*sn);
+        const lockedMu = muPeak*0.32;
+        const mu = s>0.30 ? Math.max(lockedMu, peakMu*Math.exp(-5*(s-0.30))) : peakMu;
+        Fx[k]=(P.absOn && pedalFrac>0 && v>0.5) ? muPeak*Fz[k] : mu*Fz[k];
+        if(s>peakSlip) peakSlip=s;
+      }
+      if(P.absOn && pedalFrac>0 && v>0.5) peakSlip=Math.max(peakSlip,slipTarget);
+
+      const valveCmd=[0,0,0,0];
+      for(let k=0;k<4;k++){
+        if(!P.absOn){ valveCmd[k]=1; state[k]=0; continue; }
+        switch(state[k]){
+          case 0: if(slip[k]>slipUpper) state[k]=2; else valveCmd[k]=1; break;
+          case 2: valveCmd[k]=-1; if(slip[k]<slipTarget) state[k]=1; break;
+          case 1: valveCmd[k]=0; if(slip[k]<slipLower) state[k]=3; else if(slip[k]>slipUpper) state[k]=2; break;
+          case 3: valveCmd[k]=1; if(slip[k]>slipUpper) state[k]=2; else if(slip[k]<slipLower*0.5) state[k]=0; break;
+        }
+      }
+      const absActive = P.absOn && state.some(s=>s!==0);
+      if(absActive) absEverActive=true;
+
+      const Pwheel=[0,0,0,0];
+      for(let k=0;k<4;k++){
+        m[k]+=dt*valveCmd[k]*absRate; m[k]=Math.max(0,Math.min(1,m[k]));
+        Pwheel[k]=Pmaster*m[k];
+      }
+      const Tb=[0,0,0,0];
+      for(let k=0;k<4;k++){
+        const requestedTorque=Math.min(Pwheel[k]*areas[k]*muPad*Reffs[k], Tmaxs[k]);
+        // ABS pressure modulation cannot create more tire force than the
+        // current surface can transmit near the slip target.
+        const absTorqueLimit=P.absOn ? Fz[k]*muPeak*0.98*R : Infinity;
+        Tb[k]=Math.min(requestedTorque, absTorqueLimit);
+      }
+
+      dist += v*dt;
+
+      T.push(time); V.push(v*3.6); PM.push(Pmaster/1e5); AA.push(absActive?1:0); DIST.push(dist);
+      for(let k=0;k<4;k++){ OM[k].push(omega[k]*R*3.6); SL[k].push(slip[k]); PW[k].push(Pwheel[k]/1e5); ST[k].push(state[k]); TB[k].push(Tb[k]); }
+
+      if(!stopped && v<=0.3 && time>P.brakeStart){ stopped=true; stopTime=time-P.brakeStart; stopDist=dist; }
+
+      for(let k=0;k<4;k++){
+        let domega=(Fx[k]*R-Tb[k])/J;
+        omega[k]+=dt*domega;
+        if(omega[k]<0) omega[k]=0;
+        if(P.absOn && v>0.5){
+          const minOmega=v*(1-slipTarget)/R;
+          if(omega[k]<minOmega) omega[k]=minOmega;
+        }
+        if(v<0.3) omega[k]=0;
+      }
+      const sumFx=Fx[0]+Fx[1]+Fx[2]+Fx[3];
+      let dv=-sumFx/M;
+      v += dt*dv; if(v<0) v=0;
+      if(!stopped && v<=0.5 && time>P.brakeStart){
+        v=0; stopped=true; stopTime=time-P.brakeStart; stopDist=dist;
+      }
+    }
+    if(!stopped){ stopTime=Tstop-P.brakeStart; stopDist=dist; }
+    return {T,V,OM,SL,PW,PM,ST,AA,DIST,TB,stopTime,stopDist,peakSlip,absEverActive,
+            corner:{areas,Reffs,Tmaxs,muPad}};
+  }
+
+  // ================= 3D SCENE =================
+  let renderer, scene, camera, carGroup, wheelMeshes={}, laneStripes=[], props=[];
+  let ghostCarGroup, ghostWheelMeshes={}, carLabelDefs=[];
+  let roadMesh, groundMesh, sunLight, hemiLight;
+
+  function makeSurfaceTexture(type){
+    const cv = document.createElement('canvas'); cv.width=256; cv.height=256;
+    const ctx = cv.getContext('2d');
+    if(type==='concrete'){
+      ctx.fillStyle='#a9a49a'; ctx.fillRect(0,0,256,256);
+      for(let i=0;i<900;i++){
+        const s=Math.random()*1.6+0.4, x=Math.random()*256, y=Math.random()*256;
+        ctx.fillStyle = Math.random()>0.5?'rgba(120,115,105,0.35)':'rgba(200,196,186,0.4)';
+        ctx.fillRect(x,y,s,s);
+      }
+      ctx.strokeStyle='rgba(70,66,58,0.8)'; ctx.lineWidth=3;
+      ctx.beginPath(); ctx.moveTo(0,4); ctx.lineTo(256,4); ctx.stroke();
+    } else if(type==='oily'){
+      ctx.fillStyle='#111317'; ctx.fillRect(0,0,256,256);
+      for(let i=0;i<500;i++){
+        const s=Math.random()*1.2+0.2, x=Math.random()*256, y=Math.random()*256;
+        ctx.fillStyle='rgba(50,54,60,0.4)'; ctx.fillRect(x,y,s,s);
+      }
+      for(let i=0;i<4;i++){
+        const cx=Math.random()*256, cy=Math.random()*256, r=28+Math.random()*38;
+        const grad = ctx.createRadialGradient(cx,cy,0,cx,cy,r);
+        grad.addColorStop(0,'rgba(40,60,70,0.85)');
+        grad.addColorStop(0.5,'rgba(50,40,70,0.55)');
+        grad.addColorStop(1,'rgba(17,19,23,0)');
+        ctx.fillStyle=grad;
+        ctx.beginPath(); ctx.ellipse(cx,cy,r,r*0.55,Math.random()*Math.PI,0,Math.PI*2); ctx.fill();
+      }
+    } else { // tarmac
+      ctx.fillStyle='#26292f'; ctx.fillRect(0,0,256,256);
+      for(let i=0;i<1400;i++){
+        const s=Math.random()*1.3+0.3, x=Math.random()*256, y=Math.random()*256;
+        ctx.fillStyle = Math.random()>0.5?'rgba(60,64,70,0.5)':'rgba(10,11,13,0.5)';
+        ctx.fillRect(x,y,s,s);
+      }
+    }
+    const tex = new THREE.CanvasTexture(cv);
+    tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+    tex.repeat.set(3, 90);
+    return tex;
+  }
+
+  const SURFACE_LOOK = {
+    tarmac:   {sky:0x0e1a2b, fog:0x0e1a2b, fogNear:30, fogFar:190, ground:0x152a1c, sun:0xffe6b8, sunI:1.15, hemi:0.95, roughness:0.92, metalness:0.05},
+    concrete: {sky:0x8fc4e8, fog:0xaad4ef, fogNear:40, fogFar:230, ground:0x3f7a35, sun:0xfff6e0, sunI:1.55, hemi:1.15, roughness:0.85, metalness:0.03},
+    oily:     {sky:0x0a0d13, fog:0x0a0d13, fogNear:18, fogFar:130, ground:0x0e1712, sun:0xbcd6ff, sunI:0.55, hemi:0.55, roughness:0.25, metalness:0.55}
+  };
+
+  function applySurfaceVisuals(type){
+    const look = SURFACE_LOOK[type] || SURFACE_LOOK.tarmac;
+    scene.background.setHex(look.sky);
+    scene.fog.color.setHex(look.fog);
+    scene.fog.near = look.fogNear; scene.fog.far = look.fogFar;
+    groundMesh.material.color.setHex(look.ground);
+    sunLight.color.setHex(look.sun); sunLight.intensity = look.sunI;
+    hemiLight.intensity = look.hemi;
+    roadMesh.material.map = makeSurfaceTexture(type);
+    roadMesh.material.roughness = look.roughness;
+    roadMesh.material.metalness = look.metalness;
+    roadMesh.material.color.setHex(0xffffff);
+    roadMesh.material.needsUpdate = true;
+  }
+  const ORDER=['FL','FR','RL','RR'];
+  const wheelCol = {n:0x14171c, hold:0xb07a20, release:0xaa2a20, reapply:0x1a5a66};
+
+  function buildProp(type){
+    const g = new THREE.Group();
+    if(type==='pole'){
+      const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.08,0.08,5,8), new THREE.MeshStandardMaterial({color:0x555b66}));
+      pole.position.y=2.5; g.add(pole);
+      const lamp = new THREE.Mesh(new THREE.SphereGeometry(0.22,8,8), new THREE.MeshStandardMaterial({color:0xfff0c0, emissive:0xffdf8a, emissiveIntensity:0.9}));
+      lamp.position.y=5.1; g.add(lamp);
+    } else {
+      const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.15,0.22,1.4,7), new THREE.MeshStandardMaterial({color:0x4a3626}));
+      trunk.position.y=0.7; g.add(trunk);
+      const leaves = new THREE.Mesh(new THREE.SphereGeometry(1.05,8,8), new THREE.MeshStandardMaterial({color:0x2e6b3e}));
+      leaves.position.y=1.95; g.add(leaves);
+    }
+    return g;
+  }
+
+  function buildCar(bodyColor){
+    const g = new THREE.Group();
+    const bodyMat = new THREE.MeshStandardMaterial({color:bodyColor, metalness:0.45, roughness:0.32});
+    const body = new THREE.Mesh(new THREE.BoxGeometry(1.9,0.55,4.2), bodyMat);
+    body.position.y=0.62; g.add(body);
+    const hood = new THREE.Mesh(new THREE.BoxGeometry(1.72,0.22,1.05), bodyMat);
+    hood.position.set(0,0.93,1.42); g.add(hood);
+    const cabin = new THREE.Mesh(new THREE.BoxGeometry(1.5,0.5,2.0), new THREE.MeshStandardMaterial({color:0x17232d, metalness:0.25, roughness:0.22}));
+    cabin.position.set(0,1.02,-0.2); g.add(cabin);
+    const glassMat = new THREE.MeshStandardMaterial({color:0x6fa7b5, metalness:0.15, roughness:0.12, transparent:true, opacity:0.78});
+    const windshield = new THREE.Mesh(new THREE.BoxGeometry(1.32,0.26,0.06), glassMat);
+    windshield.position.set(0,1.16,0.76); windshield.rotation.x=-0.18; g.add(windshield);
+    const rearGlass = new THREE.Mesh(new THREE.BoxGeometry(1.32,0.26,0.06), glassMat);
+    rearGlass.position.set(0,1.16,-1.16); rearGlass.rotation.x=0.18; g.add(rearGlass);
+    const sideWindowMat = glassMat.clone();
+    [-0.77,0.77].forEach(x=>{
+      const sideWindow = new THREE.Mesh(new THREE.BoxGeometry(0.04,0.28,1.45), sideWindowMat);
+      sideWindow.position.set(x,1.16,-0.2); g.add(sideWindow);
+    });
+    const bumperMat = new THREE.MeshStandardMaterial({color:0x20252b, metalness:0.55, roughness:0.3});
+    const frontBumper = new THREE.Mesh(new THREE.BoxGeometry(1.82,0.16,0.12), bumperMat);
+    frontBumper.position.set(0,0.45,2.12); g.add(frontBumper);
+    const headMat = new THREE.MeshStandardMaterial({color:0xfff1bd, emissive:0xffd56a, emissiveIntensity:1.4});
+    [-0.62,0.62].forEach(x=>{
+      const lamp = new THREE.Mesh(new THREE.BoxGeometry(0.34,0.13,0.08), headMat);
+      lamp.position.set(x,0.76,2.15); g.add(lamp);
+    });
+
+    const wheelGeo = new THREE.CylinderGeometry(0.34,0.34,0.28,16);
+    const hubGeo = new THREE.CylinderGeometry(0.13,0.13,0.30,12);
+    const positions = {FL:[-0.85,0.34,1.35], FR:[0.85,0.34,1.35], RL:[-0.85,0.34,-1.35], RR:[0.85,0.34,-1.35]};
+    const wheels = {};
+    Object.keys(positions).forEach(k=>{
+      const w = new THREE.Mesh(wheelGeo, new THREE.MeshStandardMaterial({color:0x14171c, roughness:0.9}));
+      w.rotation.z = Math.PI/2;
+      w.position.set(positions[k][0], positions[k][1], positions[k][2]);
+      g.add(w);
+      const hub = new THREE.Mesh(hubGeo, new THREE.MeshStandardMaterial({color:0x8d969f, metalness:0.8, roughness:0.25}));
+      hub.rotation.z=Math.PI/2; hub.position.copy(w.position); g.add(hub);
+      wheels[k]=w;
+    });
+
+    const blMat = new THREE.MeshStandardMaterial({color:0x330000, emissive:0x330000, emissiveIntensity:0.3});
+    const bl = new THREE.Mesh(new THREE.BoxGeometry(1.6,0.18,0.08), blMat);
+    bl.position.set(0,0.7,2.12); g.add(bl);
+    g.userData.brakeLight = blMat;
+    return {group:g, wheels, brakeLight:blMat};
+  }
+
+  function initScene(){
+    const canvas = document.getElementById('three-canvas');
+    renderer = new THREE.WebGLRenderer({canvas, antialias:true});
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio||1, 2));
+
+    scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x0e1a2b);
+    scene.fog = new THREE.Fog(0x0e1a2b, 30, 190);
+
+    camera = new THREE.PerspectiveCamera(42, 1, 0.1, 1000);
+    const SIDE_CAM = new THREE.Vector3(8.8, 11.5, 9.6);
+    camera.position.copy(SIDE_CAM);
+    camera.lookAt(0, 0.2, 0);
+    camera.userData.base = SIDE_CAM;
+
+    hemiLight = new THREE.HemisphereLight(0x9fc2ff, 0x14201a, 0.95);
+    scene.add(hemiLight);
+    sunLight = new THREE.DirectionalLight(0xffe6b8, 1.15);
+    sunLight.position.set(-25, 35, -15);
+    scene.add(sunLight);
+
+    roadMesh = new THREE.Mesh(new THREE.PlaneGeometry(13, 500), new THREE.MeshStandardMaterial({color:0xffffff, roughness:0.92}));
+    roadMesh.rotation.x = -Math.PI/2; roadMesh.position.z = -180;
+    scene.add(roadMesh);
+
+    groundMesh = new THREE.Mesh(new THREE.PlaneGeometry(500,500), new THREE.MeshStandardMaterial({color:0x152a1c, roughness:1}));
+    groundMesh.rotation.x = -Math.PI/2; groundMesh.position.y = -0.02; groundMesh.position.z = -180;
+    scene.add(groundMesh);
+
+    applySurfaceVisuals(road);
+
+    for(let i=0;i<44;i++){
+      const s = new THREE.Mesh(new THREE.PlaneGeometry(0.22,3), new THREE.MeshBasicMaterial({color:0xf4f4f4}));
+      s.rotation.x = -Math.PI/2; s.position.set(0, 0.01, -i*8);
+      scene.add(s); laneStripes.push(s);
+    }
+
+    for(let i=0;i<26;i++){
+      const type = (i%3===0)?'pole':'tree';
+      const grp = buildProp(type);
+      const baseZ = -(i*15+10);
+      grp.position.set(-3.6, 0, baseZ);
+      scene.add(grp);
+      props.push({mesh:grp, baseZ});
+    }
+
+    { const b = buildCar(0xd8452f); carGroup=b.group; wheelMeshes=b.wheels; carGroup.userData.brakeLight=b.brakeLight; }
+    scene.add(carGroup);
+
+    { const g = buildCar(0xE8604F); ghostCarGroup=g.group; ghostWheelMeshes=g.wheels; ghostCarGroup.userData.brakeLight=g.brakeLight; }
+    carGroup.position.set(-1.9,0,0);
+    ghostCarGroup.position.set(1.9,0,0);
+    ghostCarGroup.visible = false;
+    scene.add(ghostCarGroup);
+
+    const labelHost = document.getElementById('car-labels');
+    carLabelDefs = [
+      {obj:carGroup, text:'ABS ON', cls:'lbl-on'},
+      {obj:ghostCarGroup, text:'ABS OFF', cls:'lbl-off'}
+    ];
+    carLabelDefs.forEach(d=>{
+      const el = document.createElement('div');
+      el.className='label3d '+d.cls; el.textContent=d.text; el.style.display='none';
+      labelHost.appendChild(el); d.el=el;
+    });
+
+    resize3D();
+  }
+
+  function resize3D(){
+    if(!renderer) return;
+    const canvas = renderer.domElement;
+    const w = canvas.clientWidth, h = canvas.clientHeight;
+    if(w===0||h===0) return;
+    renderer.setSize(w,h,false);
+    camera.aspect = w/h;
+    camera.updateProjectionMatrix();
+  }
+
+  function stateColorHex(st, slip){
+    if(st===2 || (st===0 && slip>0.5)) return wheelCol.release;
+    if(st===1) return wheelCol.hold;
+    if(st===3) return wheelCol.reapply;
+    return wheelCol.n;
+  }
+
+  function update3D(idx, R){
+    if(!renderer) return;
+    const v = R.V[idx];
+    const dist = R.DIST[idx];
+    const spacing = 8*laneStripes.length;
+    laneStripes.forEach((s,i)=>{
+      let z = (dist - i*8) % spacing;
+      if(z>0) z -= spacing;
+      s.position.z = z;
+    });
+    const wrapLen = 15*13;
+    props.forEach(p=>{
+      let z = (dist + p.baseZ) % wrapLen;
+      if(z>0) z -= wrapLen;
+      p.mesh.position.z = z;
+    });
+
+    const Rw=0.31;
+    ORDER.forEach((k,i)=>{
+      const omega = (R.OM[i][idx]/3.6)/Rw;
+      wheelMeshes[k].rotation.x -= omega*(1/60);
+      wheelMeshes[k].material.color.setHex(stateColorHex(R.ST[i][idx], R.SL[i][idx]));
+    });
+
+    const pm = R.PM[idx];
+    const braking = pm>2;
+    carGroup.userData.brakeLight.emissiveIntensity = braking ? 1.2+Math.min(1,pm/100)*1.6 : 0.25;
+    carGroup.userData.brakeLight.emissive.setHex(braking?0xff2b1a:0x330000);
+    carGroup.userData.brakeLight.color.setHex(braking?0xff2b1a:0x330000);
+
+    const anyLock = ORDER.some((k,i)=>R.SL[i][idx]>0.75) && v>3;
+    const base = camera.userData.base;
+    const jitter = anyLock ? (Math.random()-0.5)*0.05 : 0;
+    camera.position.set(base.x, base.y+jitter, base.z+jitter);
+    camera.lookAt(0, 0.2, 0);
+    carGroup.rotation.x = THREE.MathUtils ? THREE.MathUtils.clamp(-(pm>2?1:0)*0.02,-0.04,0.04) : 0;
+
+    const compareMode = current && current.mode==='compare' && current.B;
+    ghostCarGroup.visible = !!compareMode;
+    carLabelDefs.forEach(d=> d.el.style.display = compareMode ? 'block' : 'none');
+    if(compareMode){
+      const RB = current.B;
+      const offset = RB.DIST[idx] - dist;
+      ghostCarGroup.position.set(1.9, 0, -offset);
+      ORDER.forEach((k,i)=>{
+        const omega = (RB.OM[i][idx]/3.6)/Rw;
+        ghostWheelMeshes[k].rotation.x -= omega*(1/60);
+        ghostWheelMeshes[k].material.color.setHex(stateColorHex(RB.ST[i][idx], RB.SL[i][idx]));
+      });
+      const pmB = RB.PM[idx]; const brakingB = pmB>2;
+      ghostCarGroup.userData.brakeLight.emissiveIntensity = brakingB ? 1.2+Math.min(1,pmB/100)*1.6 : 0.25;
+      ghostCarGroup.userData.brakeLight.emissive.setHex(brakingB?0xff2b1a:0x330000);
+      ghostCarGroup.userData.brakeLight.color.setHex(brakingB?0xff2b1a:0x330000);
+
+      const w = renderer.domElement.clientWidth, h = renderer.domElement.clientHeight;
+      carLabelDefs.forEach(d=>{
+        const anchor = d.obj.position.clone(); anchor.y += 1.35;
+        const p = anchor.project(camera);
+        const x=(p.x*0.5+0.5)*w, y=(-p.y*0.5+0.5)*h;
+        d.el.style.left=x+'px'; d.el.style.top=y+'px';
+        d.el.style.display = (p.z>1) ? 'none':'block';
+      });
+    }
+
+    renderer.render(scene, camera);
+  }
+
+  // ================= BRAKE CUTAWAY SCENE =================
+  let cutRenderer, cutScene, cutCamera, cutParts={}, cutLabelDefs=[], cutOrbitAngle=0.35, cutLastTime=0;
+  let selectedCorner='FL';
+  const CutState = {idx:0, R:null};
+  const cornerNames = {FL:'Front-Left', FR:'Front-Right', RL:'Rear-Left', RR:'Rear-Right'};
+
+  function buildCutaway(){
+    const canvas = document.getElementById('cut-canvas');
+    cutRenderer = new THREE.WebGLRenderer({canvas, antialias:true, alpha:false});
+    cutRenderer.setPixelRatio(Math.min(window.devicePixelRatio||1,2));
+
+    cutScene = new THREE.Scene();
+    cutScene.background = new THREE.Color(0x0a0d12);
+
+    cutCamera = new THREE.PerspectiveCamera(38, 1, 0.1, 100);
+    cutCamera.position.set(1.4, 0.6, 4.0);
+    cutCamera.lookAt(0,0,0);
+
+    cutScene.add(new THREE.HemisphereLight(0xaecbff, 0x0a0d12, 0.9));
+    const key = new THREE.DirectionalLight(0xffffff, 1.0);
+    key.position.set(3,4,5); cutScene.add(key);
+    const rim = new THREE.DirectionalLight(0x3fb8c9, 0.4);
+    rim.position.set(-4,2,-3); cutScene.add(rim);
+
+    const asm = new THREE.Group();
+    cutScene.add(asm);
+
+    // rotor (disc) — geometry rotated so its own Z axis is the spin axis, facing the camera
+    const rotorGeo = new THREE.CylinderGeometry(1.15,1.15,0.09,40);
+    rotorGeo.rotateX(Math.PI/2);
+    const rotor = new THREE.Mesh(rotorGeo, new THREE.MeshStandardMaterial({color:0x9aa0a8, metalness:0.75, roughness:0.35}));
+    asm.add(rotor);
+    // vent hub + bolt heads for a mechanical look
+    const hub = new THREE.Mesh(new THREE.CylinderGeometry(0.32,0.32,0.16,24), new THREE.MeshStandardMaterial({color:0x6b7078, metalness:0.7, roughness:0.4}));
+    hub.rotation.x = Math.PI/2; asm.add(hub);
+    for(let i=0;i<5;i++){
+      const a = i/5*Math.PI*2;
+      const bolt = new THREE.Mesh(new THREE.CylinderGeometry(0.045,0.045,0.18,8), new THREE.MeshStandardMaterial({color:0x2a2e34, metalness:0.6, roughness:0.5}));
+      bolt.rotation.x = Math.PI/2;
+      bolt.position.set(Math.cos(a)*0.32, Math.sin(a)*0.32, 0);
+      asm.add(bolt);
+    }
+    cutParts.rotor = rotor;
+
+    // pads (translate along Z toward the rotor faces as pressure rises)
+    const padGeo = new THREE.BoxGeometry(0.62,0.95,0.09);
+    const padMatOut = new THREE.MeshStandardMaterial({color:0x555b66, roughness:0.7, emissive:0x000000});
+    const padMatIn = padMatOut.clone();
+    const padOut = new THREE.Mesh(padGeo, padMatOut); padOut.position.set(0,0.55,0.32); asm.add(padOut);
+    const padIn = new THREE.Mesh(padGeo, padMatIn); padIn.position.set(0,0.55,-0.32); asm.add(padIn);
+    cutParts.padOut=padOut; cutParts.padIn=padIn;
+
+    // pistons pushing the pads
+    const pistonGeo = new THREE.CylinderGeometry(0.16,0.16,0.34,16);
+    const pistonMat = new THREE.MeshStandardMaterial({color:0xb7bcc4, metalness:0.85, roughness:0.25});
+    const pistonOut = new THREE.Mesh(pistonGeo, pistonMat); pistonOut.rotation.x=Math.PI/2; pistonOut.position.set(0,0.55,0.62); asm.add(pistonOut);
+    const pistonIn = new THREE.Mesh(pistonGeo, pistonMat.clone()); pistonIn.rotation.x=Math.PI/2; pistonIn.position.set(0,0.55,-0.62); asm.add(pistonIn);
+    cutParts.pistonOut=pistonOut; cutParts.pistonIn=pistonIn;
+
+    // open caliper bracket (skeletal, so internals stay visible)
+    const armMat = new THREE.MeshStandardMaterial({color:0x2f343c, metalness:0.5, roughness:0.6});
+    const bridge = new THREE.Mesh(new THREE.BoxGeometry(0.34,0.22,0.95), armMat);
+    bridge.position.set(0,1.28,0); asm.add(bridge);
+    const strutOut = new THREE.Mesh(new THREE.BoxGeometry(0.16,0.85,0.16), armMat);
+    strutOut.position.set(0,0.9,0.36); asm.add(strutOut);
+    const strutIn = new THREE.Mesh(new THREE.BoxGeometry(0.16,0.85,0.16), armMat);
+    strutIn.position.set(0,0.9,-0.36); asm.add(strutIn);
+    cutParts.bridge=bridge;
+
+    // hydraulic line + reservoir stub, color-coded by pressure
+    const lineMat = new THREE.MeshStandardMaterial({color:0x3fb8c9, emissive:0x0a2e33, roughness:0.4});
+    const linePts = [new THREE.Vector3(2.1,2.0,0), new THREE.Vector3(1.1,1.7,0), new THREE.Vector3(0.2,1.38,0)];
+    const curve = new THREE.CatmullRomCurve3(linePts);
+    const lineGeo = new THREE.TubeGeometry(curve, 20, 0.045, 8, false);
+    const line = new THREE.Mesh(lineGeo, lineMat);
+    asm.add(line);
+    const mc = new THREE.Mesh(new THREE.CylinderGeometry(0.22,0.22,0.5,12), new THREE.MeshStandardMaterial({color:0x3a4453, metalness:0.4, roughness:0.5}));
+    mc.position.set(2.35,2.05,0); mc.rotation.z=Math.PI/2.2; asm.add(mc);
+    cutParts.line=line; cutParts.lineMat=lineMat;
+
+    // ground shadow disc (purely cosmetic)
+    const shadow = new THREE.Mesh(new THREE.CircleGeometry(1.5,24), new THREE.MeshBasicMaterial({color:0x000000, transparent:true, opacity:0.25}));
+    shadow.position.set(0,-1.35,0); shadow.rotation.x=-Math.PI/2; cutScene.add(shadow);
+
+    cutParts.group = asm;
+
+    // label anchors: {key, worldPos, text}
+    cutLabelDefs = [
+      {key:'rotor',  pos:new THREE.Vector3(-0.9,0.85,0), text:'ROTOR (spins with wheel)'},
+      {key:'caliper',pos:new THREE.Vector3(0,1.5,0),     text:'CALIPER BRACKET'},
+      {key:'padOut', pos:new THREE.Vector3(0.55,0.55,0.4),text:'BRAKE PAD'},
+      {key:'piston', pos:new THREE.Vector3(0.55,0.15,0.65),text:'PISTON'},
+      {key:'line',   pos:new THREE.Vector3(1.5,1.9,0),   text:'HYDRAULIC LINE'},
+    ];
+    const labelHost = document.getElementById('cut-labels');
+    cutLabelDefs.forEach(d=>{
+      const el = document.createElement('div');
+      el.className='label3d'; el.textContent=d.text;
+      labelHost.appendChild(el); d.el=el;
+    });
+
+    resizeCutaway();
+    cutLastTime = performance.now();
+    requestAnimationFrame(cutLoop);
+  }
+
+  function resizeCutaway(){
+    if(!cutRenderer) return;
+    const canvas = cutRenderer.domElement;
+    const w=canvas.clientWidth, h=canvas.clientHeight;
+    if(w===0||h===0) return;
+    cutRenderer.setSize(w,h,false);
+    cutCamera.aspect=w/h; cutCamera.updateProjectionMatrix();
+  }
+
+  function setCutawayFrame(idx,R){ CutState.idx=idx; CutState.R=R; }
+
+  function stateName(s){ return ['NORMAL','HOLD','RELEASE','REAPPLY'][s]||'NORMAL'; }
+  function stateClass(s){ return ['state-normal','state-hold','state-release','state-reapply'][s]||'state-normal'; }
+
+  function applyCutawayVisuals(){
+    const R = CutState.R; if(!R || !cutParts.rotor) return;
+    const ci = {FL:0,FR:1,RL:2,RR:3}[selectedCorner];
+    const idx = CutState.idx;
+    const pBar = R.PW[ci][idx];
+    const torque = R.TB[ci][idx];
+    const area = R.corner.areas[ci];
+    const force = pBar*1e5*area;
+    const Tmax = R.corner.Tmaxs[ci];
+    const slip = R.SL[ci][idx];
+    const st = R.ST[ci][idx];
+    const wspeed = R.OM[ci][idx];
+
+    const pFrac = Math.max(0, Math.min(1, pBar/120));
+    const gap = 0.30 - pFrac*0.27;
+    cutParts.padOut.position.z = 0.05 + gap;
+    cutParts.padIn.position.z = -(0.05+gap);
+    cutParts.pistonOut.position.z = cutParts.padOut.position.z + 0.30;
+    cutParts.pistonIn.position.z = cutParts.padIn.position.z - 0.30;
+
+    const heat = Math.max(0, Math.min(1, torque/Tmax));
+    const heatColor = new THREE.Color().setHSL(0.08-heat*0.08, 0.9, 0.35+heat*0.25);
+    cutParts.padOut.material.color.set(heat>0.05?heatColor:0x555b66);
+    cutParts.padIn.material.color.set(heat>0.05?heatColor:0x555b66);
+    cutParts.padOut.material.emissive.set(heat>0.3?heatColor:0x000000);
+    cutParts.padIn.material.emissive.set(heat>0.3?heatColor:0x000000);
+
+    const lineColor = new THREE.Color().lerpColors(new THREE.Color(0x2a4a52), new THREE.Color(0x3fd6f0), pFrac);
+    cutParts.lineMat.color.copy(lineColor);
+    cutParts.lineMat.emissive.copy(lineColor).multiplyScalar(0.35);
+
+    // readouts
+    document.getElementById('ro-pressure').textContent = pBar.toFixed(1)+' bar';
+    document.getElementById('ro-force').textContent = Math.round(force).toLocaleString()+' N';
+    document.getElementById('ro-torque').textContent = Math.round(torque)+' N·m';
+    const stEl = document.getElementById('ro-state');
+    stEl.textContent = stateName(st); stEl.className='v '+stateClass(st);
+    document.getElementById('ro-wspeed').textContent = Math.round(wspeed)+' km/h';
+
+    const band = document.getElementById('slipbar-band');
+    band.style.left='10%'; band.style.width='22%';
+    const fill = document.getElementById('slipbar-fill');
+    fill.style.left = (Math.min(1,slip)*100)+'%';
+  }
+
+  function updateCutLabels(){
+    if(!cutRenderer) return;
+    const canvas = cutRenderer.domElement;
+    const w=canvas.clientWidth, h=canvas.clientHeight;
+    cutLabelDefs.forEach(d=>{
+      const p = d.pos.clone().project(cutCamera);
+      const x = (p.x*0.5+0.5)*w, y = (-p.y*0.5+0.5)*h;
+      d.el.style.left = x+'px'; d.el.style.top = y+'px';
+      d.el.style.display = (p.z>1 || x<0 || x>w) ? 'none' : 'block';
+    });
+  }
+
+  function cutLoop(now){
+    const dt = Math.min(0.05, (now-cutLastTime)/1000); cutLastTime=now;
+    cutOrbitAngle += dt*0.12;
+    const sway = Math.sin(cutOrbitAngle)*0.55;
+    cutCamera.position.x = 1.4+sway; cutCamera.position.z = 4.0-Math.abs(sway)*0.3;
+    cutCamera.lookAt(0,0.35,0);
+
+    if(playing && CutState.R){
+      const ci={FL:0,FR:1,RL:2,RR:3}[selectedCorner];
+      const omega = (CutState.R.OM[ci][CutState.idx]/3.6)/0.31;
+      cutParts.rotor.rotation.z -= omega*dt;
+    }
+    applyCutawayVisuals();
+    updateCutLabels();
+    if(cutRenderer) cutRenderer.render(cutScene, cutCamera);
+    requestAnimationFrame(cutLoop);
+  }
+
+  document.getElementById('cornerseg').addEventListener('click', e=>{
+    const b=e.target.closest('button'); if(!b) return;
+    [...document.getElementById('cornerseg').children].forEach(c=>c.classList.remove('active'));
+    b.classList.add('active'); selectedCorner=b.dataset.corner;
+  });
+
+  // ================= AUDIO =================
+  // Synthesized engine (oscillator-based, RPM-linked) + brake-force-linked tire
+  // screech. No sampled/streamed audio is used (self-contained artifact), and
+  // no filtered-noise "wind" layer — only engine tone + tire noise remain.
+  let audioCtx=null, muted=false, initedAudio=false;
+  let eng={}, scr={};
+  function ensureAudio(){
+    if(initedAudio) return;
+    try{
+      audioCtx = new (window.AudioContext||window.webkitAudioContext)();
+      const master = audioCtx.createGain(); master.gain.value=1; master.connect(audioCtx.destination);
+
+      // --- engine: 3 detuned oscillators (fundamental + thickening + sub octave) ---
+      eng.g = audioCtx.createGain(); eng.g.gain.value=0.05;
+      eng.filter = audioCtx.createBiquadFilter(); eng.filter.type='lowpass'; eng.filter.frequency.value=500;
+      eng.filter.connect(eng.g).connect(master);
+
+      eng.o1 = audioCtx.createOscillator(); eng.o1.type='sawtooth'; eng.o1.frequency.value=30;
+      eng.o2 = audioCtx.createOscillator(); eng.o2.type='sawtooth'; eng.o2.frequency.value=30.2;
+      eng.o3 = audioCtx.createOscillator(); eng.o3.type='square';   eng.o3.frequency.value=15;
+      const mix2 = audioCtx.createGain(); mix2.gain.value=0.6;
+      const mix3 = audioCtx.createGain(); mix3.gain.value=0.5;
+      eng.o1.connect(eng.filter);
+      eng.o2.connect(mix2).connect(eng.filter);
+      eng.o3.connect(mix3).connect(eng.filter);
+      eng.o1.start(); eng.o2.start(); eng.o3.start();
+
+      // cylinder-throb tremolo: an LFO modulates the engine gain around its base value
+      eng.lfo = audioCtx.createOscillator(); eng.lfo.type='sine'; eng.lfo.frequency.value=22;
+      eng.lfoDepth = audioCtx.createGain(); eng.lfoDepth.gain.value=0.012;
+      eng.lfo.connect(eng.lfoDepth).connect(eng.g.gain);
+      eng.lfo.start();
+
+      // --- tires: filtered noise, gain/pitch tied to slip severity AND brake force ---
+      const len = audioCtx.sampleRate*2;
+      const buf = audioCtx.createBuffer(1,len,audioCtx.sampleRate);
+      const data = buf.getChannelData(0);
+      for(let i=0;i<len;i++) data[i]=Math.random()*2-1;
+
+      const screechSrc = audioCtx.createBufferSource();
+      screechSrc.buffer=buf; screechSrc.loop=true;
+      scr.filter = audioCtx.createBiquadFilter(); scr.filter.type='bandpass'; scr.filter.frequency.value=1700; scr.filter.Q.value=8;
+      scr.g = audioCtx.createGain(); scr.g.gain.value=0;
+      screechSrc.connect(scr.filter).connect(scr.g).connect(master);
+      screechSrc.start();
+
+      eng.master = master;
+      initedAudio=true;
+    }catch(e){ /* audio unsupported — silently continue */ }
+    if(audioCtx && audioCtx.state==='suspended') audioCtx.resume();
+  }
+  function absClick(){
+    if(!audioCtx||muted) return;
+    const o=audioCtx.createOscillator(), g=audioCtx.createGain();
+    o.type='square'; o.frequency.value=1500;
+    g.gain.setValueAtTime(0.05, audioCtx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime+0.05);
+    o.connect(g).connect(audioCtx.destination);
+    o.start(); o.stop(audioCtx.currentTime+0.06);
+  }
+  let lastAudioIdx=null, brakeThumped=false;
+  function updateAudio(idx, R){
+    if(!audioCtx) return;
+    const v = R.V[idx];
+    const speedN = Math.min(1, v/160);
+    const now = audioCtx.currentTime;
+    if(!muted){
+      // engine RPM-style mapping: idle tone even at v=0, rising with speed
+      const fundamental = 28 + speedN*105;
+      eng.o1.frequency.setTargetAtTime(fundamental, now, 0.05);
+      eng.o2.frequency.setTargetAtTime(fundamental*1.006, now, 0.05);
+      eng.o3.frequency.setTargetAtTime(fundamental*0.5, now, 0.05);
+      eng.filter.frequency.setTargetAtTime(420+speedN*1600, now, 0.08);
+      eng.lfo.frequency.setTargetAtTime(16+speedN*60, now, 0.1);
+      eng.g.gain.setTargetAtTime(0.045+speedN*0.055, now, 0.1);
+
+      // tire screech: driven by slip severity AND by current brake force (pedal pressure)
+      const maxSlip = Math.max(R.SL[0][idx],R.SL[1][idx],R.SL[2][idx],R.SL[3][idx]);
+      const pressureFrac = Math.min(1, R.PM[idx]/120);
+      const skid = (maxSlip>0.45 && v>4) ? Math.min(1,(maxSlip-0.45)*2.2) : 0;
+      scr.g.gain.setTargetAtTime(skid*(0.09+0.12*pressureFrac), now, 0.04);
+      scr.filter.frequency.setTargetAtTime(1500+pressureFrac*900, now, 0.06);
+
+      if(lastAudioIdx!=null){
+        for(let i=0;i<4;i++){ if(R.ST[i][idx]!==R.ST[i][lastAudioIdx]){ absClick(); break; } }
+      }
+      if(pressureFrac>0.03 && !brakeThumped){ brakeThump(pressureFrac); brakeThumped=true; }
+      if(pressureFrac<0.02) brakeThumped=false;
+    } else {
+      eng.g.gain.setTargetAtTime(0, now, 0.05);
+      scr.g.gain.setTargetAtTime(0, now, 0.05);
+    }
+    lastAudioIdx = idx;
+  }
+  function brakeThump(forceFrac){
+    if(!audioCtx||muted) return;
+    const o=audioCtx.createOscillator(), g=audioCtx.createGain(), f=audioCtx.createBiquadFilter();
+    o.type='triangle'; o.frequency.value=70;
+    f.type='lowpass'; f.frequency.value=220;
+    g.gain.setValueAtTime(0.001, audioCtx.currentTime);
+    g.gain.linearRampToValueAtTime(0.12*forceFrac, audioCtx.currentTime+0.01);
+    g.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime+0.18);
+    o.connect(f).connect(g).connect(audioCtx.destination);
+    o.start(); o.stop(audioCtx.currentTime+0.2);
+  }
+
+  // ================= UI / PLAYBACK =================
+  const els = {
+    v0:document.getElementById('v0'), v0val:document.getElementById('v0val'),
+    pedal:document.getElementById('pedal'), pedalval:document.getElementById('pedalval'),
+    tb:document.getElementById('tb'), tbval:document.getElementById('tbval'),
+    roadseg:document.getElementById('roadseg'),
+    absswitch:document.getElementById('absswitch'), abslabel:document.getElementById('abslabel'),
+    runbtn:document.getElementById('runbtn'), comparebtn:document.getElementById('comparebtn'),
+    scrub:document.getElementById('scrub'), scrubtime:document.getElementById('scrubtime'),
+    playbtn:document.getElementById('playbtn'), clock:document.getElementById('clockreadout'),
+    mutebtn:document.getElementById('mutebtn'), hudSpeed:document.getElementById('hud-speed'), hudLamp:document.getElementById('hud-lamp')
+  };
+
+  let road='tarmac', absOn=true;
+  els.v0.addEventListener('input', ()=> els.v0val.textContent = els.v0.value+' km/h');
+  els.pedal.addEventListener('input', ()=> els.pedalval.textContent = els.pedal.value+' %');
+  els.tb.addEventListener('input', ()=> els.tbval.textContent = parseFloat(els.tb.value).toFixed(1)+' s');
+  els.roadseg.addEventListener('click', e=>{
+    const b=e.target.closest('button'); if(!b) return;
+    [...els.roadseg.children].forEach(c=>c.classList.remove('active'));
+    b.classList.add('active'); road=b.dataset.road;
+  });
+  els.absswitch.addEventListener('click', ()=>{
+    absOn=!absOn; els.absswitch.classList.toggle('on',absOn); els.abslabel.textContent=absOn?'ON':'OFF';
+  });
+  els.mutebtn.addEventListener('click', ()=>{
+    muted=!muted; els.mutebtn.textContent = muted?'🔇':'🔊';
+  });
+
+  function readParams(){
+    return { v0: parseFloat(els.v0.value)/3.6, pedalPct: parseFloat(els.pedal.value), brakeStart: parseFloat(els.tb.value), road, absOn };
+  }
+
+  let current=null, playing=false;
+
+  function fmt(n,d){ return n.toFixed(d); }
+
+  function runOne(){
+    ensureAudio();
+    const P=readParams();
+    applySurfaceVisuals(P.road);
+    current = {A: simulate(P), B:null, mode:'single'};
+    afterRun();
+  }
+  function runCompare(){
+    ensureAudio();
+    const P=readParams();
+    applySurfaceVisuals(P.road);
+    const A=simulate(Object.assign({},P,{absOn:true}));
+    const B=simulate(Object.assign({},P,{absOn:false}));
+    current = {A,B,mode:'compare'};
+    afterRun();
+  }
+  function afterRun(){
+    playing=false; els.playbtn.textContent='▶';
+    els.scrub.max = current.A.T.length-1; els.scrub.value=0;
+    renderCharts(); renderStats(); lastAudioIdx=null; brakeThumped=false;
+    updateFrame(0);
+  }
+
+  function renderStats(){
+    const A=current.A;
+    const cb = document.getElementById('compare-callout');
+    if(current.mode!=='compare'){
+      document.getElementById('stat-dist').innerHTML = fmt(A.stopDist,1)+' <small>m</small>';
+      document.getElementById('stat-time').innerHTML = fmt(A.stopTime,2)+' <small>s</small>';
+      document.getElementById('stat-slip').innerHTML = fmt(A.peakSlip*100,0)+' <small>%</small>';
+      document.getElementById('stat-abs').innerHTML = A.absEverActive?'INTERVENED':(!readParams().absOn?'DISABLED':'STANDBY');
+      cb.style.display='none';
+      return;
+    }
+    const B=current.B;
+    const line=(vA,vB,unit)=>'<span style="color:var(--cyan)">'+vA+'</span><small> on</small><br><span style="color:var(--red)">'+vB+'</span><small> off</small>';
+    document.getElementById('stat-dist').innerHTML = line(fmt(A.stopDist,1),fmt(B.stopDist,1),'m');
+    document.getElementById('stat-time').innerHTML = line(fmt(A.stopTime,2),fmt(B.stopTime,2),'s');
+    document.getElementById('stat-slip').innerHTML = line(fmt(A.peakSlip*100,0)+'%',fmt(B.peakSlip*100,0)+'%','');
+    document.getElementById('stat-abs').innerHTML = '<span style="color:var(--cyan)">CONTROLLED</span><br><span style="color:var(--red)">'+(B.peakSlip>0.9?'LOCKED UP':'SKIDDING')+'</span>';
+
+    const deltaDist = B.stopDist - A.stopDist;
+    const deltaTime = B.stopTime - A.stopTime;
+    const pct = Math.round((deltaDist/B.stopDist)*100);
+    cb.style.display='block';
+    cb.innerHTML = '<strong style="color:var(--cyan)">ABS ON</strong> stopped in <strong>'+fmt(A.stopDist,1)+' m</strong> ('+fmt(A.stopTime,2)+' s). '
+      +'<strong style="color:var(--red)">ABS OFF</strong> needed <strong>'+fmt(B.stopDist,1)+' m</strong> ('+fmt(B.stopTime,2)+' s) — '
+      +(deltaDist>0.3
+        ? 'that\'s <strong>'+fmt(Math.abs(deltaDist),1)+' m farther ('+Math.abs(pct)+'%) and '+fmt(Math.abs(deltaTime),2)+' s slower</strong>, because the locked wheels (red, in the 3D view and wheel-slip chart) slide at a lower friction than an ABS-controlled wheel near peak grip.'
+        : 'on this surface / pedal input the difference is small — try a harder brake application or a lower-friction surface to see ABS make a bigger difference.');
+  }
+
+  function setupCanvas(cv){
+    const ratio=Math.min(window.devicePixelRatio||1,2);
+    const w=cv.clientWidth||cv.parentElement?.clientWidth||320;
+    const h=Number(cv.dataset.chartHeight||cv.getAttribute('height')||180);
+    cv.dataset.chartHeight=String(h);
+    cv.width=w*ratio; cv.height=h*ratio;
+    const ctx=cv.getContext('2d'); ctx.setTransform(ratio,0,0,ratio,0,0);
+    return {ctx,w,h};
+  }
+  function drawAxes(ctx,w,h,pad){
+    ctx.strokeStyle='#2A323E'; ctx.lineWidth=1; ctx.beginPath();
+    ctx.moveTo(pad.l,pad.t); ctx.lineTo(pad.l,h-pad.b); ctx.lineTo(w-pad.r,h-pad.b); ctx.stroke();
+  }
+  function lineSeries(ctx,xs,ys,xMax,yMin,yMax,w,h,pad,color,dash){
+    ctx.save(); if(dash) ctx.setLineDash(dash);
+    ctx.strokeStyle=color; ctx.lineWidth=1.6; ctx.beginPath();
+    const innerW=w-pad.l-pad.r, innerH=h-pad.t-pad.b;
+    for(let i=0;i<xs.length;i++){
+      const x=pad.l+(xs[i]/xMax)*innerW;
+      const yv=Math.max(yMin,Math.min(yMax,ys[i]));
+      const y=h-pad.b-((yv-yMin)/(yMax-yMin))*innerH;
+      if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+    }
+    ctx.stroke(); ctx.restore();
+  }
+  const colors={FL:'#3FB8C9',FR:'#6FD68A',RL:'#F2A33B',RR:'#E8604F',veh:'#E8EBEF',pm:'#E8EBEF'};
+  const order=['FL','FR','RL','RR'];
+
+  function renderCharts(){ renderSpeedChart(); renderSlipChart(); renderPressureChart(); renderAbsChart(); }
+
+  function renderSpeedChart(){
+    const cv=document.getElementById('chart-speed'); const {ctx,w,h}=setupCanvas(cv);
+    ctx.clearRect(0,0,w,h); const pad={l:34,r:10,t:10,b:20};
+    let yMax=0; [current.A,current.B].filter(Boolean).forEach(R=>{ yMax=Math.max(yMax, Math.max(...R.V), ...order.map((_,k)=>Math.max(...R.OM[k]))); });
+    yMax=Math.ceil((yMax+5)/10)*10;
+    const xMax=current.A.T[current.A.T.length-1];
+    drawAxes(ctx,w,h,pad);
+    ctx.fillStyle='#5B6472'; ctx.font='9px JetBrains Mono'; ctx.fillText(yMax+' km/h',2,pad.t+8);
+    lineSeries(ctx,current.A.T,current.A.V,xMax,0,yMax,w,h,pad,colors.veh);
+    order.forEach((k,i)=>lineSeries(ctx,current.A.T,current.A.OM[i],xMax,0,yMax,w,h,pad,colors[k]));
+    if(current.B){ lineSeries(ctx,current.B.T,current.B.V,xMax,0,yMax,w,h,pad,colors.veh,[3,3]); order.forEach((k,i)=>lineSeries(ctx,current.B.T,current.B.OM[i],xMax,0,yMax,w,h,pad,colors[k],[3,3])); }
+  }
+  function renderSlipChart(){
+    const cv=document.getElementById('chart-slip'); const {ctx,w,h}=setupCanvas(cv);
+    ctx.clearRect(0,0,w,h); const pad={l:30,r:10,t:10,b:20};
+    const xMax=current.A.T[current.A.T.length-1];
+    const innerW=w-pad.l-pad.r, innerH=h-pad.t-pad.b;
+    const yTop=h-pad.b-0.22*innerH, yBot=h-pad.b-0.10*innerH;
+    ctx.fillStyle='rgba(91,100,114,0.18)'; ctx.fillRect(pad.l,yTop,innerW,yBot-yTop);
+    drawAxes(ctx,w,h,pad);
+    ctx.fillStyle='#5B6472'; ctx.font='9px JetBrains Mono'; ctx.fillText('100%',2,pad.t+8);
+    order.forEach((k,i)=>lineSeries(ctx,current.A.T,current.A.SL[i],xMax,0,1,w,h,pad,colors[k]));
+    if(current.B) order.forEach((k,i)=>lineSeries(ctx,current.B.T,current.B.SL[i],xMax,0,1,w,h,pad,colors[k],[3,3]));
+  }
+  function renderPressureChart(){
+    const cv=document.getElementById('chart-pressure'); const {ctx,w,h}=setupCanvas(cv);
+    ctx.clearRect(0,0,w,h); const pad={l:34,r:10,t:10,b:20};
+    const xMax=current.A.T[current.A.T.length-1];
+    let yMax=0; [current.A,current.B].filter(Boolean).forEach(R=>{ yMax=Math.max(yMax, Math.max(...R.PM), ...order.map((_,k)=>Math.max(...R.PW[k]))); });
+    yMax=Math.ceil((yMax+5)/20)*20;
+    drawAxes(ctx,w,h,pad);
+    ctx.fillStyle='#5B6472'; ctx.font='9px JetBrains Mono'; ctx.fillText(yMax+' bar',2,pad.t+8);
+    lineSeries(ctx,current.A.T,current.A.PM,xMax,0,yMax,w,h,pad,colors.pm);
+    order.forEach((k,i)=>lineSeries(ctx,current.A.T,current.A.PW[i],xMax,0,yMax,w,h,pad,colors[k]));
+    if(current.B){ lineSeries(ctx,current.B.T,current.B.PM,xMax,0,yMax,w,h,pad,colors.pm,[3,3]); order.forEach((k,i)=>lineSeries(ctx,current.B.T,current.B.PW[i],xMax,0,yMax,w,h,pad,colors[k],[3,3])); }
+  }
+  const stateColor=['#3A4453','#F2A33B','#E8604F','#3FB8C9'];
+  function renderAbsChart(){
+    const cv=document.getElementById('chart-abs'); const {ctx,w,h}=setupCanvas(cv);
+    ctx.clearRect(0,0,w,h); const pad={l:34,r:10,t:8,b:8};
+    const innerW=w-pad.l-pad.r, innerH=h-pad.t-pad.b, rowH=innerH/4;
+    const R=current.A; const xMax=R.T[R.T.length-1];
+    const step=Math.max(1,Math.floor(R.T.length/600));
+    order.forEach((k,row)=>{
+      for(let i=0;i<R.T.length-step;i+=step){
+        ctx.fillStyle=stateColor[R.ST[row][i]];
+        const x0=pad.l+(R.T[i]/xMax)*innerW, x1=pad.l+(R.T[i+step]/xMax)*innerW;
+        ctx.fillRect(x0,pad.t+row*rowH+1,Math.max(1,x1-x0),rowH-2);
+      }
+      ctx.fillStyle='#8B94A3'; ctx.font='9px JetBrains Mono'; ctx.fillText(order[row],2,pad.t+row*rowH+rowH/2+3);
+    });
+  }
+
+  const SURF_COLORS = {tarmac:'#8f9198', concrete:'#c9c2a8', oily:'#3fb8c9'};
+  const SURF_LABELS = {tarmac:'Tarmac', concrete:'Concrete', oily:'Oily'};
+  let surfaceResults = null;
+
+  function drawBarChart(canvasId, entries, unit){
+    const cv=document.getElementById(canvasId); const {ctx,w,h}=setupCanvas(cv);
+    ctx.clearRect(0,0,w,h);
+    const pad={l:38,r:14,t:16,b:26};
+    const innerW=w-pad.l-pad.r, innerH=h-pad.t-pad.b;
+    const maxV = Math.max(...entries.map(e=>e.v))*1.2 || 1;
+    ctx.strokeStyle='#2A323E'; ctx.lineWidth=1;
+    ctx.beginPath(); ctx.moveTo(pad.l,pad.t); ctx.lineTo(pad.l,h-pad.b); ctx.lineTo(w-pad.r,h-pad.b); ctx.stroke();
+    const bw = innerW/entries.length*0.55;
+    entries.forEach((e,i)=>{
+      const cx = pad.l + innerW*(i+0.5)/entries.length;
+      const barH = (e.v/maxV)*innerH;
+      ctx.fillStyle = e.color;
+      ctx.fillRect(cx-bw/2, h-pad.b-barH, bw, barH);
+      ctx.fillStyle='#E8EBEF'; ctx.font='bold 11px JetBrains Mono'; ctx.textAlign='center';
+      ctx.fillText(e.v.toFixed(1)+unit, cx, h-pad.b-barH-6);
+      ctx.fillStyle='#8B94A3'; ctx.font='10px Space Grotesk';
+      ctx.fillText(e.label, cx, h-pad.b+15);
+    });
+    ctx.textAlign='left';
+  }
+
+  function renderSurfaceCharts(){
+    if(!surfaceResults) return;
+    const order3 = ['tarmac','concrete','oily'];
+    drawBarChart('chart-surf-dist', order3.map(k=>({label:SURF_LABELS[k], v:surfaceResults[k].stopDist, color:SURF_COLORS[k]})), 'm');
+    drawBarChart('chart-surf-time', order3.map(k=>({label:SURF_LABELS[k], v:surfaceResults[k].stopTime, color:SURF_COLORS[k]})), 's');
+    const best = order3.reduce((a,b)=> surfaceResults[a].stopDist<surfaceResults[b].stopDist?a:b);
+    const worst = order3.reduce((a,b)=> surfaceResults[a].stopDist>surfaceResults[b].stopDist?a:b);
+    const ratio = (surfaceResults[worst].stopDist/surfaceResults[best].stopDist).toFixed(1);
+    document.getElementById('surface-callout').innerHTML =
+      'Same pedal input, same speed'+(readParams().absOn?', ABS on':', ABS off')+': stopping on <strong>'+SURF_LABELS[worst]+
+      '</strong> takes <strong>'+ratio+'×</strong> the distance of <strong>'+SURF_LABELS[best]+'</strong> ('+
+      fmt(surfaceResults[worst].stopDist,1)+' m vs '+fmt(surfaceResults[best].stopDist,1)+' m) — friction, not brake force, is the limiting factor once a wheel is near its grip limit.';
+  }
+
+  function runSurfaceCompare(){
+    ensureAudio();
+    const P = readParams();
+    surfaceResults = {
+      tarmac: simulate(Object.assign({},P,{road:'tarmac'})),
+      concrete: simulate(Object.assign({},P,{road:'concrete'})),
+      oily: simulate(Object.assign({},P,{road:'oily'}))
+    };
+    document.getElementById('surface-panel').style.display='block';
+    renderSurfaceCharts();
+  }
+
+  function updateFrame(idx){
+    const R=current.A;
+    idx=Math.max(0,Math.min(R.T.length-1, idx|0));
+    const t=R.T[idx];
+    els.clock.textContent='t = '+t.toFixed(3)+' s';
+    els.scrubtime.textContent=t.toFixed(2)+'s';
+    els.hudSpeed.textContent=Math.round(R.V[idx]);
+    els.hudLamp.classList.toggle('active', R.AA[idx]===1);
+
+    order.forEach((k,i)=>{
+      const slip=R.SL[i][idx];
+      document.getElementById('val-'+k).textContent=Math.round(slip*100)+'%';
+    });
+
+    update3D(idx, R);
+    updateAudio(idx, R);
+    setCutawayFrame(idx, R);
+  }
+
+  els.scrub.addEventListener('input', ()=>{ playing=false; els.playbtn.textContent='▶'; updateFrame(parseInt(els.scrub.value,10)); });
+  els.playbtn.addEventListener('click', ()=>{
+    if(!current) return;
+    ensureAudio();
+    playing=!playing; els.playbtn.textContent=playing?'⏸':'▶';
+    if(playing){ lastWall=performance.now(); requestAnimationFrame(tick); }
+  });
+  let lastWall=0;
+  function tick(now){
+    if(!playing) return;
+    const dtWall=(now-lastWall)/1000; lastWall=now;
+    const R=current.A; const dtSim=R.T[1]-R.T[0];
+    let idx=parseInt(els.scrub.value,10);
+    idx += Math.round((dtWall*2.2)/dtSim);
+    if(idx>=R.T.length-1){ idx=R.T.length-1; playing=false; els.playbtn.textContent='▶'; }
+    els.scrub.value=idx; updateFrame(idx);
+    if(playing) requestAnimationFrame(tick);
+  }
+
+  window.addEventListener('resize', ()=>{ resize3D(); resizeCutaway(); if(current) { renderCharts(); update3D(parseInt(els.scrub.value,10), current.A); } if(surfaceResults) renderSurfaceCharts(); });
+
+  els.runbtn.addEventListener('click', runOne);
+  els.comparebtn.addEventListener('click', runCompare);
+  document.getElementById('surfacebtn').addEventListener('click', runSurfaceCompare);
+
+  initScene();
+  buildCutaway();
+  runOne();
+})();
+</script>
+</body>
+</html>
