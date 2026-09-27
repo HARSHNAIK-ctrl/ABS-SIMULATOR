@@ -99,6 +99,9 @@
   .legend span{font-size:0.68rem; color:var(--text-dim); display:flex; align-items:center; gap:5px;}
   .dot{width:8px; height:8px; border-radius:50%; display:inline-block;}
   canvas.chart{width:100%; display:block;}
+  .chart-note{display:flex; justify-content:space-between; align-items:flex-start; gap:10px; flex-wrap:wrap; margin-top:8px; color:var(--text-dim); font-size:0.68rem; line-height:1.5;}
+  .chart-note .reading{font-family:'JetBrains Mono',monospace; color:var(--text); white-space:normal;}
+  .chart-note .explain{flex:1 1 180px;}
 
   footer{max-width:1400px; margin:0 auto; padding:8px 24px 28px; color:var(--text-faint); font-size:0.72rem;}
   .banner{background:var(--panel-2); border:1px solid var(--line); border-left:3px solid var(--amber); border-radius:8px; padding:10px 14px; font-size:0.78rem; color:var(--text-dim); margin-bottom:14px;}
@@ -264,6 +267,7 @@
           </div>
         </div>
         <canvas class="chart" id="chart-speed" height="190"></canvas>
+        <div class="chart-note"><span class="explain">Speed over time: the white line is the car; colored lines are each wheel. FL/FR are front left/right; RL/RR are rear left/right. The dashed marker shows the selected moment.</span><span class="reading" id="note-speed"></span></div>
       </div>
       <div class="panel chart-card">
         <div class="chart-head">
@@ -277,6 +281,7 @@
           </div>
         </div>
         <canvas class="chart" id="chart-slip" height="190"></canvas>
+        <div class="chart-note"><span class="explain">Slip shows how much a wheel slows compared with the car. 0% means rolling freely; 100% means locked. The shaded band is the ABS target range (10–22%).</span><span class="reading" id="note-slip"></span></div>
       </div>
     </div>
 
@@ -293,6 +298,7 @@
           </div>
         </div>
         <canvas class="chart" id="chart-pressure" height="170"></canvas>
+        <div class="chart-note"><span class="explain">Brake pressure over time: higher pressure pushes the pads harder against the discs. ABS can hold or release wheel pressure to prevent locking.</span><span class="reading" id="note-pressure"></span></div>
       </div>
       <div class="panel chart-card">
         <div class="chart-head">
@@ -305,6 +311,7 @@
           </div>
         </div>
         <canvas class="chart" id="chart-abs" height="170"></canvas>
+        <div class="chart-note"><span class="explain">Each row is one wheel. Colors show what ABS is doing: normal, holding pressure, releasing pressure, or applying it again. The marker shows now.</span><span class="reading" id="note-abs"></span></div>
       </div>
     </div>
 
@@ -334,7 +341,7 @@
 </div>
 
 <footer>
-  Client-side physics + a Three.js visualization (not connected to any live vehicle or real audio recordings — engine hum, tire screech and ABS clicks are synthesized with the Web Audio API). Tire model: μ(slip)=2·μpeak·s/(1+s²). Parameters: m=1550 kg, R=0.31 m, J=1.2 kg·m², front/rear split 55/45. Educational virtual prototype for a college mechanical-engineering project.
+  Client-side physics + a Three.js visualization (not connected to any live vehicle or real audio recordings — braking sounds such as tire screech and ABS clicks are synthesized with the Web Audio API; no engine-running sound). Tire model: μ(slip)=2·μpeak·s/(1+s²). Parameters: m=1550 kg, R=0.31 m, J=1.2 kg·m², front/rear split 55/45. Educational virtual prototype for a college mechanical-engineering project.
 </footer>
 
 <script>
@@ -355,85 +362,88 @@
     let v=P.v0, omega=[P.v0/R,P.v0/R,P.v0/R,P.v0/R], m=[1,1,1,1], Pmaster=0;
     let state=[0,0,0,0];
     let dist=0, stopped=false, stopTime=null, stopDist=null, peakSlip=0, absEverActive=false;
-
     const T=[],V=[],OM=[[],[],[],[]],SL=[[],[],[],[]],PW=[[],[],[],[]],PM=[],ST=[[],[],[],[]],AA=[],DIST=[],TB=[[],[],[],[]];
 
     for(let i=0;i<=N;i++){
       const time=i*dt;
       let pedalFrac=0; const rampT=0.15;
       if(time>P.brakeStart) pedalFrac = Math.min(1,(time-P.brakeStart)/rampT)*(P.pedalPct/100);
-      const force = pedalFrac*maxPedalForce*boosterRatio;
-      const pRaw = force/mcArea;
-      Pmaster += dt*(pRaw-Pmaster)/mcTau;
+
+      const brakeLevel = Math.max(0, pedalFrac);
+      const pressureTarget = brakeLevel * maxPedalForce * boosterRatio / mcArea;
+      Pmaster += dt*(pressureTarget-Pmaster)/mcTau;
       Pmaster = Math.max(0, Math.min(mcPmax, Pmaster));
 
-      const slip=[0,0,0,0], Fx=[0,0,0,0];
-      for(let k=0;k<4;k++){
-        const vWheel=omega[k]*R;
-        let s = v>0.5 ? (v-vWheel)/v : 0;
-        s = Math.max(0, Math.min(1,s));
-        slip[k]=s;
-        const sn=s/slipPeak;
-        const peakMu = 2*muPeak*sn/(1+sn*sn);
-        const lockedMu = muPeak*0.32;
-        const mu = s>0.30 ? Math.max(lockedMu, peakMu*Math.exp(-5*(s-0.30))) : peakMu;
-        Fx[k]=(P.absOn && pedalFrac>0 && v>0.5) ? muPeak*Fz[k] : mu*Fz[k];
-        if(s>peakSlip) peakSlip=s;
-      }
-      if(P.absOn && pedalFrac>0 && v>0.5) peakSlip=Math.max(peakSlip,slipTarget);
-
+      const slip=[0,0,0,0], Fx=[0,0,0,0], Tb=[0,0,0,0];
       const valveCmd=[0,0,0,0];
+
       for(let k=0;k<4;k++){
-        if(!P.absOn){ valveCmd[k]=1; state[k]=0; continue; }
-        switch(state[k]){
-          case 0: if(slip[k]>slipUpper) state[k]=2; else valveCmd[k]=1; break;
-          case 2: valveCmd[k]=-1; if(slip[k]<slipTarget) state[k]=1; break;
-          case 1: valveCmd[k]=0; if(slip[k]<slipLower) state[k]=3; else if(slip[k]>slipUpper) state[k]=2; break;
-          case 3: valveCmd[k]=1; if(slip[k]>slipUpper) state[k]=2; else if(slip[k]<slipLower*0.5) state[k]=0; break;
+        const wheelSpeed = omega[k] * R;
+        const slipRaw = v > 0.5 ? Math.max(0, (v - wheelSpeed) / v) : 0;
+        const slipValue = Math.min(1, slipRaw);
+        slip[k] = slipValue;
+
+        if(P.absOn){
+          if(slipValue > slipUpper) state[k] = 2;
+          else if(state[k] === 2 && slipValue < slipTarget) state[k] = 1;
+          else if(state[k] === 1 && slipValue < slipLower) state[k] = 3;
+          else if(state[k] === 3 && slipValue < slipLower*0.5) state[k] = 0;
+          else if(state[k] === 0 && slipValue < slipUpper) state[k] = 0;
+        } else {
+          state[k] = 0;
         }
-      }
-      const absActive = P.absOn && state.some(s=>s!==0);
-      if(absActive) absEverActive=true;
 
-      const Pwheel=[0,0,0,0];
+        if(state[k] === 0) valveCmd[k] = 1;
+        if(state[k] === 1) valveCmd[k] = 0;
+        if(state[k] === 2) valveCmd[k] = -1;
+        if(state[k] === 3) valveCmd[k] = 1;
+
+        m[k] += dt * valveCmd[k] * absRate;
+        m[k] = Math.max(0, Math.min(1, m[k]));
+
+        const brakePressure = Pmaster * m[k];
+        const requestedTorque = Math.min(brakePressure * areas[k] * muPad * Reffs[k], Tmaxs[k]);
+        const wheelGripLimit = Fz[k] * muPeak * 0.98 * R;
+        Tb[k] = Math.min(requestedTorque, wheelGripLimit);
+
+        const sn = slipValue / slipPeak;
+        const mu = (2 * muPeak * sn) / (1 + sn * sn);
+        Fx[k] = Math.max(0, mu * Fz[k] * brakeLevel);
+        if(slipValue > peakSlip) peakSlip = slipValue;
+      }
+
+      const absActive = P.absOn && state.some(sv => sv !== 0);
+      if(absActive) absEverActive = true;
+
       for(let k=0;k<4;k++){
-        m[k]+=dt*valveCmd[k]*absRate; m[k]=Math.max(0,Math.min(1,m[k]));
-        Pwheel[k]=Pmaster*m[k];
-      }
-      const Tb=[0,0,0,0];
-      for(let k=0;k<4;k++){
-        const requestedTorque=Math.min(Pwheel[k]*areas[k]*muPad*Reffs[k], Tmaxs[k]);
-        // ABS pressure modulation cannot create more tire force than the
-        // current surface can transmit near the slip target.
-        const absTorqueLimit=P.absOn ? Fz[k]*muPeak*0.98*R : Infinity;
-        Tb[k]=Math.min(requestedTorque, absTorqueLimit);
+        const wheelTorque = -(Tb[k] + Fx[k] * R) * (0.8 + brakeLevel * 0.8);
+        const targetWheelSpeed = Math.max(0, v * (1 - 0.12 - brakeLevel * 0.18));
+        const desiredOmega = targetWheelSpeed / R;
+        omega[k] += (desiredOmega - omega[k]) * (2.2 + brakeLevel * 10.0) * dt + (wheelTorque / J) * dt;
+        if(omega[k] < 0) omega[k] = 0;
       }
 
-      dist += v*dt;
+      const totalBrakeForce = Fx.reduce((sum, f) => sum + f, 0);
+      const dv = -(totalBrakeForce / M);
+      v += dt * dv;
+      if(v < 0) v = 0;
 
+      if(!stopped && v <= 0.5 && time > P.brakeStart && brakeLevel > 0){
+        v = 0;
+        omega.fill(0);
+        slip.fill(0);
+        stopped = true;
+        stopTime = time - P.brakeStart;
+        stopDist = dist;
+      }
+
+      dist += v * dt;
       T.push(time); V.push(v*3.6); PM.push(Pmaster/1e5); AA.push(absActive?1:0); DIST.push(dist);
-      for(let k=0;k<4;k++){ OM[k].push(omega[k]*R*3.6); SL[k].push(slip[k]); PW[k].push(Pwheel[k]/1e5); ST[k].push(state[k]); TB[k].push(Tb[k]); }
+      for(let k=0;k<4;k++){ OM[k].push(omega[k]*R*3.6); SL[k].push(slip[k]); PW[k].push(Pmaster*m[k]/1e5); ST[k].push(state[k]); TB[k].push(Tb[k]); }
 
-      if(!stopped && v<=0.3 && time>P.brakeStart){ stopped=true; stopTime=time-P.brakeStart; stopDist=dist; }
-
-      for(let k=0;k<4;k++){
-        let domega=(Fx[k]*R-Tb[k])/J;
-        omega[k]+=dt*domega;
-        if(omega[k]<0) omega[k]=0;
-        if(P.absOn && v>0.5){
-          const minOmega=v*(1-slipTarget)/R;
-          if(omega[k]<minOmega) omega[k]=minOmega;
-        }
-        if(v<0.3) omega[k]=0;
-      }
-      const sumFx=Fx[0]+Fx[1]+Fx[2]+Fx[3];
-      let dv=-sumFx/M;
-      v += dt*dv; if(v<0) v=0;
-      if(!stopped && v<=0.5 && time>P.brakeStart){
-        v=0; stopped=true; stopTime=time-P.brakeStart; stopDist=dist;
-      }
     }
-    if(!stopped){ stopTime=Tstop-P.brakeStart; stopDist=dist; }
+
+    if(!stopped){ stopTime = Tstop - P.brakeStart; stopDist = dist; }
     return {T,V,OM,SL,PW,PM,ST,AA,DIST,TB,stopTime,stopDist,peakSlip,absEverActive,
             corner:{areas,Reffs,Tmaxs,muPad}};
   }
@@ -927,37 +937,14 @@
   });
 
   // ================= AUDIO =================
-  // Synthesized engine (oscillator-based, RPM-linked) + brake-force-linked tire
-  // screech. No sampled/streamed audio is used (self-contained artifact), and
-  // no filtered-noise "wind" layer — only engine tone + tire noise remain.
+  // Synthesized braking audio only: tire screech, ABS clicks, and brake thump.
   let audioCtx=null, muted=false, initedAudio=false;
-  let eng={}, scr={};
+  let scr={};
   function ensureAudio(){
     if(initedAudio) return;
     try{
       audioCtx = new (window.AudioContext||window.webkitAudioContext)();
       const master = audioCtx.createGain(); master.gain.value=1; master.connect(audioCtx.destination);
-
-      // --- engine: 3 detuned oscillators (fundamental + thickening + sub octave) ---
-      eng.g = audioCtx.createGain(); eng.g.gain.value=0.05;
-      eng.filter = audioCtx.createBiquadFilter(); eng.filter.type='lowpass'; eng.filter.frequency.value=500;
-      eng.filter.connect(eng.g).connect(master);
-
-      eng.o1 = audioCtx.createOscillator(); eng.o1.type='sawtooth'; eng.o1.frequency.value=30;
-      eng.o2 = audioCtx.createOscillator(); eng.o2.type='sawtooth'; eng.o2.frequency.value=30.2;
-      eng.o3 = audioCtx.createOscillator(); eng.o3.type='square';   eng.o3.frequency.value=15;
-      const mix2 = audioCtx.createGain(); mix2.gain.value=0.6;
-      const mix3 = audioCtx.createGain(); mix3.gain.value=0.5;
-      eng.o1.connect(eng.filter);
-      eng.o2.connect(mix2).connect(eng.filter);
-      eng.o3.connect(mix3).connect(eng.filter);
-      eng.o1.start(); eng.o2.start(); eng.o3.start();
-
-      // cylinder-throb tremolo: an LFO modulates the engine gain around its base value
-      eng.lfo = audioCtx.createOscillator(); eng.lfo.type='sine'; eng.lfo.frequency.value=22;
-      eng.lfoDepth = audioCtx.createGain(); eng.lfoDepth.gain.value=0.012;
-      eng.lfo.connect(eng.lfoDepth).connect(eng.g.gain);
-      eng.lfo.start();
 
       // --- tires: filtered noise, gain/pitch tied to slip severity AND brake force ---
       const len = audioCtx.sampleRate*2;
@@ -972,7 +959,6 @@
       screechSrc.connect(scr.filter).connect(scr.g).connect(master);
       screechSrc.start();
 
-      eng.master = master;
       initedAudio=true;
     }catch(e){ /* audio unsupported — silently continue */ }
     if(audioCtx && audioCtx.state==='suspended') audioCtx.resume();
@@ -990,18 +976,8 @@
   function updateAudio(idx, R){
     if(!audioCtx) return;
     const v = R.V[idx];
-    const speedN = Math.min(1, v/160);
     const now = audioCtx.currentTime;
     if(!muted){
-      // engine RPM-style mapping: idle tone even at v=0, rising with speed
-      const fundamental = 28 + speedN*105;
-      eng.o1.frequency.setTargetAtTime(fundamental, now, 0.05);
-      eng.o2.frequency.setTargetAtTime(fundamental*1.006, now, 0.05);
-      eng.o3.frequency.setTargetAtTime(fundamental*0.5, now, 0.05);
-      eng.filter.frequency.setTargetAtTime(420+speedN*1600, now, 0.08);
-      eng.lfo.frequency.setTargetAtTime(16+speedN*60, now, 0.1);
-      eng.g.gain.setTargetAtTime(0.045+speedN*0.055, now, 0.1);
-
       // tire screech: driven by slip severity AND by current brake force (pedal pressure)
       const maxSlip = Math.max(R.SL[0][idx],R.SL[1][idx],R.SL[2][idx],R.SL[3][idx]);
       const pressureFrac = Math.min(1, R.PM[idx]/120);
@@ -1015,7 +991,6 @@
       if(pressureFrac>0.03 && !brakeThumped){ brakeThump(pressureFrac); brakeThumped=true; }
       if(pressureFrac<0.02) brakeThumped=false;
     } else {
-      eng.g.gain.setTargetAtTime(0, now, 0.05);
       scr.g.gain.setTargetAtTime(0, now, 0.05);
     }
     lastAudioIdx = idx;
@@ -1088,6 +1063,7 @@
   function afterRun(){
     playing=false; els.playbtn.textContent='▶';
     els.scrub.max = current.A.T.length-1; els.scrub.value=0;
+    chartFrameIdx=0;
     renderCharts(); renderStats(); lastAudioIdx=null; brakeThumped=false;
     updateFrame(0);
   }
@@ -1148,8 +1124,37 @@
   }
   const colors={FL:'#3FB8C9',FR:'#6FD68A',RL:'#F2A33B',RR:'#E8604F',veh:'#E8EBEF',pm:'#E8EBEF'};
   const order=['FL','FR','RL','RR'];
+  let chartFrameIdx=0;
 
-  function renderCharts(){ renderSpeedChart(); renderSlipChart(); renderPressureChart(); renderAbsChart(); }
+  function renderCharts(){ renderSpeedChart(); renderSlipChart(); renderPressureChart(); renderAbsChart(); updateChartNotes(); }
+
+  function drawTimeLabels(ctx,w,h,pad,xMax){
+    ctx.fillStyle='#5B6472'; ctx.font='9px JetBrains Mono';
+    ctx.textAlign='left'; ctx.fillText('0 s',pad.l,h-4);
+    ctx.textAlign='center'; ctx.fillText('time',pad.l+(w-pad.l-pad.r)/2,h-4);
+    ctx.textAlign='right'; ctx.fillText(xMax.toFixed(0)+' s',w-pad.r,h-4);
+    ctx.textAlign='left';
+  }
+  function drawTimeMarker(ctx,w,h,pad,xMax){
+    const x=pad.l+(current.A.T[chartFrameIdx]/xMax)*(w-pad.l-pad.r);
+    ctx.save(); ctx.strokeStyle='#E8EBEF'; ctx.fillStyle='#E8EBEF'; ctx.lineWidth=1;
+    ctx.setLineDash([3,3]); ctx.beginPath(); ctx.moveTo(x,pad.t); ctx.lineTo(x,h-pad.b); ctx.stroke();
+    ctx.setLineDash([]); ctx.font='8px JetBrains Mono';
+    const labelX=Math.max(pad.l,Math.min(w-pad.r-25,x-12));
+    ctx.fillText('NOW',labelX,pad.t+9); ctx.restore();
+  }
+  function updateChartNotes(){
+    const R=current.A, idx=chartFrameIdx, time=R.T[idx];
+    const speed=Math.round(R.V[idx]);
+    const wheelSpeeds=order.map((wheel,i)=>wheel+' '+Math.round(R.OM[i][idx])).join(' · ');
+    let maxSlip=0, maxSlipWheel=order[0];
+    order.forEach((wheel,i)=>{ if(R.SL[i][idx]>maxSlip){ maxSlip=R.SL[i][idx]; maxSlipWheel=wheel; } });
+    const pressures=order.map((wheel,i)=>wheel+' '+R.PW[i][idx].toFixed(0)).join(' · ');
+    document.getElementById('note-speed').textContent='NOW '+time.toFixed(1)+' s · car '+speed+' km/h · wheels '+wheelSpeeds+' km/h';
+    document.getElementById('note-slip').textContent='NOW '+time.toFixed(1)+' s · highest '+Math.round(maxSlip*100)+'% ('+maxSlipWheel+')';
+    document.getElementById('note-pressure').textContent='NOW '+time.toFixed(1)+' s · master '+R.PM[idx].toFixed(0)+' bar · wheels '+pressures+' bar';
+    document.getElementById('note-abs').textContent='NOW '+time.toFixed(1)+' s · '+order.map((wheel,i)=>wheel+' '+stateName(R.ST[i][idx]).toLowerCase()).join(' · ');
+  }
 
   function renderSpeedChart(){
     const cv=document.getElementById('chart-speed'); const {ctx,w,h}=setupCanvas(cv);
@@ -1162,6 +1167,7 @@
     lineSeries(ctx,current.A.T,current.A.V,xMax,0,yMax,w,h,pad,colors.veh);
     order.forEach((k,i)=>lineSeries(ctx,current.A.T,current.A.OM[i],xMax,0,yMax,w,h,pad,colors[k]));
     if(current.B){ lineSeries(ctx,current.B.T,current.B.V,xMax,0,yMax,w,h,pad,colors.veh,[3,3]); order.forEach((k,i)=>lineSeries(ctx,current.B.T,current.B.OM[i],xMax,0,yMax,w,h,pad,colors[k],[3,3])); }
+    drawTimeLabels(ctx,w,h,pad,xMax); drawTimeMarker(ctx,w,h,pad,xMax);
   }
   function renderSlipChart(){
     const cv=document.getElementById('chart-slip'); const {ctx,w,h}=setupCanvas(cv);
@@ -1174,6 +1180,7 @@
     ctx.fillStyle='#5B6472'; ctx.font='9px JetBrains Mono'; ctx.fillText('100%',2,pad.t+8);
     order.forEach((k,i)=>lineSeries(ctx,current.A.T,current.A.SL[i],xMax,0,1,w,h,pad,colors[k]));
     if(current.B) order.forEach((k,i)=>lineSeries(ctx,current.B.T,current.B.SL[i],xMax,0,1,w,h,pad,colors[k],[3,3]));
+    drawTimeLabels(ctx,w,h,pad,xMax); drawTimeMarker(ctx,w,h,pad,xMax);
   }
   function renderPressureChart(){
     const cv=document.getElementById('chart-pressure'); const {ctx,w,h}=setupCanvas(cv);
@@ -1186,6 +1193,7 @@
     lineSeries(ctx,current.A.T,current.A.PM,xMax,0,yMax,w,h,pad,colors.pm);
     order.forEach((k,i)=>lineSeries(ctx,current.A.T,current.A.PW[i],xMax,0,yMax,w,h,pad,colors[k]));
     if(current.B){ lineSeries(ctx,current.B.T,current.B.PM,xMax,0,yMax,w,h,pad,colors.pm,[3,3]); order.forEach((k,i)=>lineSeries(ctx,current.B.T,current.B.PW[i],xMax,0,yMax,w,h,pad,colors[k],[3,3])); }
+    drawTimeLabels(ctx,w,h,pad,xMax); drawTimeMarker(ctx,w,h,pad,xMax);
   }
   const stateColor=['#3A4453','#F2A33B','#E8604F','#3FB8C9'];
   function renderAbsChart(){
@@ -1202,6 +1210,7 @@
       }
       ctx.fillStyle='#8B94A3'; ctx.font='9px JetBrains Mono'; ctx.fillText(order[row],2,pad.t+row*rowH+rowH/2+3);
     });
+    drawTimeLabels(ctx,w,h,pad,xMax); drawTimeMarker(ctx,w,h,pad,xMax);
   }
 
   const SURF_COLORS = {tarmac:'#8f9198', concrete:'#c9c2a8', oily:'#3fb8c9'};
@@ -1259,6 +1268,7 @@
   function updateFrame(idx){
     const R=current.A;
     idx=Math.max(0,Math.min(R.T.length-1, idx|0));
+    chartFrameIdx=idx;
     const t=R.T[idx];
     els.clock.textContent='t = '+t.toFixed(3)+' s';
     els.scrubtime.textContent=t.toFixed(2)+'s';
@@ -1266,10 +1276,14 @@
     els.hudLamp.classList.toggle('active', R.AA[idx]===1);
 
     order.forEach((k,i)=>{
-      const slip=R.SL[i][idx];
-      document.getElementById('val-'+k).textContent=Math.round(slip*100)+'%';
+      const vehicleKmh = Number(R.V[idx]) || 0;
+      const wheelKmh = Number(R.OM[i][idx]) || 0;
+      const slip = vehicleKmh > 1 ? Math.max(0, (vehicleKmh - wheelKmh) / vehicleKmh) : 0;
+      document.getElementById('val-'+k).textContent = Math.round(slip * 100) + '%';
     });
 
+    renderCharts();
+    if(current.mode==='compare') renderStats();
     update3D(idx, R);
     updateAudio(idx, R);
     setCutawayFrame(idx, R);
